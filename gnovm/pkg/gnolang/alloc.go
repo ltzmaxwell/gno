@@ -59,6 +59,8 @@ const (
 	allocAmino     = _allocBase + _allocPointer + _allocAny
 	allocAminoByte = 10 // XXX
 	allocHeapItem  = _allocBase + _allocPointer + _allocTypedValue
+	allocGoSlice   = 24 // go slice header
+	allocOp        = 8  // // Pad the value to ensure it is a multiple of 8 bytes.
 )
 
 func NewAllocator(maxBytes int64) *Allocator {
@@ -151,6 +153,16 @@ func (alloc *Allocator) AllocateBoundMethod() {
 
 func (alloc *Allocator) AllocateBlock(items int64) {
 	alloc.Allocate(allocBlock + allocBlockItem*items)
+}
+
+// e.g. make([]TypedValue, n)
+// this allocates a go slice header, not gno *SliceValue.
+func (alloc *Allocator) AllocateTypedValueSlice(items int64) {
+	alloc.Allocate(allocGoSlice + _allocTypedValue*items)
+}
+
+func (alloc *Allocator) AllocateOpSlice(items int64) {
+	alloc.Allocate(allocGoSlice + allocOp*items)
 }
 
 func (alloc *Allocator) AllocateBlockItems(items int64) {
@@ -303,6 +315,18 @@ func (alloc *Allocator) NewMap(size int) *MapValue {
 func (alloc *Allocator) NewBlock(source BlockNode, parent *Block) *Block {
 	alloc.AllocateBlock(int64(source.GetNumNames()))
 	return NewBlock(source, parent)
+}
+
+func (alloc *Allocator) NewTypedValueSlice(n int64) []TypedValue {
+	alloc.AllocateTypedValueSlice(n)
+	stv := make([]TypedValue, n)
+	return stv
+}
+
+func (alloc *Allocator) NewOpSlice(n int64) []Op {
+	alloc.AllocateOpSlice(n)
+	sop := make([]Op, n)
+	return sop
 }
 
 func (alloc *Allocator) NewType(t Type) Type {

@@ -1506,7 +1506,7 @@ func (m *Machine) PushOp(op Op) {
 	}
 	if len(m.Ops) == m.NumOps {
 		// TODO tune. also see PushValue().
-		newOps := make([]Op, len(m.Ops)*2)
+		newOps := m.Alloc.NewOpSlice(int64(len(m.Ops) * 2))
 		copy(newOps, m.Ops)
 		m.Ops = newOps
 	}
@@ -1637,7 +1637,7 @@ func (m *Machine) PushValue(tv TypedValue) {
 	}
 	if len(m.Values) == m.NumValues {
 		// TODO tune. also see PushOp().
-		newValues := make([]TypedValue, len(m.Values)*2)
+		newValues := m.Alloc.NewTypedValueSlice(int64(len(m.Values) * 2))
 		copy(newValues, m.Values)
 		m.Values = newValues
 	}
