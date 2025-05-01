@@ -1835,7 +1835,7 @@ func (m *Machine) PushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, is
 				"missing crossing() after cross call to %v from %s to %s",
 				fv.String(),
 				m.Realm.GetPath(),
-				pv.Realm.Path,
+				pv.PkgPath,
 			))
 		}
 		m.Realm = pv.GetRealm()
@@ -1850,7 +1850,7 @@ func (m *Machine) PushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, is
 				"missing cross before external crossing() in %v from %s to %s",
 				fv.String(),
 				m.Realm.Path,
-				pv.Realm.Path,
+				pv.PkgPath,
 			))
 		} else {
 			// ok
@@ -1870,7 +1870,7 @@ func (m *Machine) PushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, is
 		} else {
 			recvOID := obj.GetObjectInfo().ID
 			if recvOID.IsZero() ||
-				(m.Realm != nil && recvOID.PkgID == m.Realm.ID) {
+					(m.Realm != nil && recvOID.PkgID == m.Realm.ID) {
 				// no switch
 				return
 			} else {
