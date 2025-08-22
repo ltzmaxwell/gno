@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -58,8 +59,11 @@ type Store interface {
 	SetBlockNode(BlockNode)
 	RealmStorageDiffs() map[string]int64 // returns storage changes per realm within the message
 
+	Clone() *defaultStore
+
 	// UNSTABLE
 	GetAllocator() *Allocator
+	SetAllocator(alloc *Allocator)
 	NumMemPackages() int64
 	// Upon restart, all packages will be re-preprocessed; This
 	// loads BlockNodes and Types onto the store for persistence
@@ -71,6 +75,7 @@ type Store interface {
 	IterMemPackage() <-chan *std.MemPackage
 	ClearObjectCache() // run before processing a message
 	GarbageCollectObjectCache(gcCycle int64)
+	// CacheExists(oid ObjectID) bool
 	SetNativeResolver(NativeResolver)                     // for native functions
 	GetNative(pkgPath string, name Name) func(m *Machine) // for native functions
 	SetLogStoreOps(dst io.Writer)
@@ -266,6 +271,10 @@ func (ds *defaultStore) GetAllocator() *Allocator {
 	return ds.alloc
 }
 
+func (ds *defaultStore) SetAllocator(alloc *Allocator) {
+	ds.alloc = alloc
+}
+
 // Used by cmd/gno (e.g. lint) to inject target package as MPTest.
 func (ds *defaultStore) GetPackageGetter() (pg PackageGetter) {
 	return ds.pkgGetter
@@ -277,6 +286,19 @@ func (ds *defaultStore) SetPackageGetter(pg PackageGetter) {
 
 // Gets package from cache, or loads it from baseStore, or gets it from package getter.
 func (ds *defaultStore) GetPackage(pkgPath string, isImport bool) *PackageValue {
+	fmt.Println("======GetPackage, pkgPath: ", pkgPath)
+	fmt.Println("======GetPackage, allocator: ", ds.GetAllocator())
+	PrintlnCaller(2)
+	defer func() {
+		fmt.Println("======Finish GetPackage, !!!")
+
+	}()
+	// if pkgPath == "gno.land/r/demo/ext" {
+	// 	panic("!!!!!!!!!!!!!!!!!")
+	// }
+	// if ds.GetAllocator() == nil {
+	// 	panic("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+	// }
 	// helper to detect circular imports
 	if isImport {
 		if slices.Contains(ds.current, pkgPath) {
@@ -289,14 +311,18 @@ func (ds *defaultStore) GetPackage(pkgPath string, isImport bool) *PackageValue 
 	}
 	// first, check cache.
 	oid := ObjectIDFromPkgPath(pkgPath)
+	fmt.Println("======trying from cache...")
 	if oo, exists := ds.cacheObjects[oid]; exists {
 		pv := oo.(*PackageValue)
 		return pv
 	}
 	// else, load package.
 	if ds.baseStore != nil {
+		fmt.Println("======trying from store..., allocater: ", ds.GetAllocator())
 		if oo := ds.loadObjectSafe(oid); oo != nil {
 			pv := oo.(*PackageValue)
+			// XXX, alloc, FBlocks...?
+			// in loadObjectSafe...?
 			_ = pv.GetBlock(ds) // preload
 			// get package associated realm if nil.
 			if pv.IsRealm() && pv.Realm == nil {
@@ -304,12 +330,13 @@ func (ds *defaultStore) GetPackage(pkgPath string, isImport bool) *PackageValue 
 				pv.Realm = rlm
 			}
 			// Rederive pv.fBlocksMap.
-			pv.deriveFBlocksMap(ds)
+			pv.deriveFBlocksMap(ds.alloc, ds)
 			return pv
 		}
 	}
 	// otherwise, fetch from pkgGetter.
 	if ds.pkgGetter != nil {
+		fmt.Println("======trying from pkgGetter...")
 		if pn, pv := ds.pkgGetter(pkgPath, ds); pv != nil {
 			// e.g. tests/imports_tests loads example/gno.land/r/... realms.
 			// if pv.IsRealm() {
@@ -463,7 +490,10 @@ func (ds *defaultStore) loadObjectSafe(oid ObjectID) Object {
 		gas := overflow.Mulp(ds.gasConfig.GasGetObject, store.Gas(len(bz)))
 		ds.consumeGas(gas, GasGetObjectDesc)
 		amino.MustUnmarshal(bz, &oo)
-		ds.alloc.Allocate(oo.GetShallowSize())
+		fmt.Println("======loadObjectSafe, allocate..., oid: ", oid)
+		fmt.Println("======oo, type of oo: ", oo, reflect.TypeOf(oo))
+		withRef := true
+		ds.alloc.Allocate(oo.GetShallowSize(withRef))
 		if debug {
 			if oo.GetObjectID() != oid {
 				panic(fmt.Sprintf("unexpected object id: expected %v but got %v",
@@ -477,6 +507,14 @@ func (ds *defaultStore) loadObjectSafe(oid ObjectID) Object {
 		return oo
 	}
 	return nil
+}
+
+func (ds *defaultStore) Clone() *defaultStore {
+	baseStore := ds.baseStore
+	iavlStore := ds.iavlStore
+
+	ds2 := NewStore(nil, baseStore.CacheWrap(), iavlStore.CacheWrap())
+	return ds2
 }
 
 // NOTE: unlike GetObject(), SetObject() is also used to persist updated
@@ -495,6 +533,7 @@ func (ds *defaultStore) SetObject(oo Object) int64 {
 	}
 	oid := oo.GetObjectID()
 	// replace children/fields with Ref.
+	// XXX: allocate ref???
 	o2 := copyValueWithRefs(oo)
 	// marshal to binary.
 	bz := amino.MustMarshalAny(o2)
@@ -552,7 +591,7 @@ func (ds *defaultStore) SetObject(oo Object) int64 {
 		copy(hashbz[HashSize:], bz)
 		ds.baseStore.Set([]byte(key), hashbz)
 		size = len(hashbz)
-		oo.(Object).GetObjectInfo().LastObjectSize = int64(size)
+		oo.GetObjectInfo().LastObjectSize = int64(size)
 	}
 	// save object to cache.
 	if debug {
@@ -672,9 +711,8 @@ func (ds *defaultStore) SetCacheType(tt Type) {
 	if tt2, exists := ds.cacheTypes.Get(tid); exists {
 		if tt != tt2 {
 			panic(fmt.Sprintf("cannot re-register %q with different type", tid))
-		} else {
-			// already set.
 		}
+		// else, already set.
 	} else {
 		ds.cacheTypes.Set(tid, tt)
 	}
@@ -774,11 +812,11 @@ func (ds *defaultStore) SetBlockNode(bn BlockNode) {
 		panic("unexpected zero location in blocknode")
 	}
 	// save node to backend.
-	if ds.baseStore != nil {
-		// TODO: implement copyValueWithRefs() for Nodes.
-		// key := backendNodeKey(loc)
-		// ds.backend.Set([]byte(key), bz)
-	}
+	// if ds.baseStore != nil {
+	// TODO: implement copyValueWithRefs() for Nodes.
+	// key := backendNodeKey(loc)
+	// ds.backend.Set([]byte(key), bz)
+	// }
 	// save node to cache.
 	ds.cacheNodes.Set(loc, bn)
 	// XXX duplicate?
@@ -862,10 +900,13 @@ func (ds *defaultStore) AddMemPackage(mpkg *std.MemPackage, mptype MemPackageTyp
 // GetMemPackage retrieves the MemPackage at the given path.
 // It returns nil if the package could not be found.
 func (ds *defaultStore) GetMemPackage(path string) *std.MemPackage {
+	fmt.Println("======, GetMemPackage, path: ", path)
+	fmt.Println("======ds.GetAllocator: ", ds.GetAllocator())
 	return ds.getMemPackage(path, false)
 }
 
 func (ds *defaultStore) getMemPackage(path string, isRetry bool) *std.MemPackage {
+	fmt.Println("======getMemPackage, path: ", path)
 	if bm.OpsEnabled {
 		bm.PauseOpCode()
 		defer bm.ResumeOpCode()
@@ -882,12 +923,14 @@ func (ds *defaultStore) getMemPackage(path string, isRetry bool) *std.MemPackage
 	pathkey := []byte(backendPackagePathKey(path))
 	bz := ds.iavlStore.Get(pathkey)
 	if bz == nil {
+		fmt.Println("======bz is nil...")
 		// If this is the first try, attempt using GetPackage to retrieve the
 		// package, first. GetPackage can leverage pkgGetter, which in most
 		// implementations works by running Machine.RunMemPackage with save = true,
 		// which would add the package to the store after running.
 		// Some packages may never be persisted, thus why we only attempt this twice.
 		if !isRetry && ds.pkgGetter != nil {
+			// panic("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 			if pv := ds.GetPackage(path, false); pv != nil {
 				return ds.getMemPackage(path, true)
 			}
@@ -897,8 +940,12 @@ func (ds *defaultStore) getMemPackage(path string, isRetry bool) *std.MemPackage
 	gas := overflow.Mulp(ds.gasConfig.GasGetMemPackage, store.Gas(len(bz)))
 	ds.consumeGas(gas, GasGetMemPackageDesc)
 
+	// XXX, maybe already loaded by LoadImport
+	println("======bz not nil, from iavl...")
+	// XXX, alloc
 	var mpkg *std.MemPackage
 	amino.MustUnmarshal(bz, &mpkg)
+	// ds.alloc.Allocate(2000)
 	size = len(bz)
 	return mpkg
 }
@@ -950,7 +997,7 @@ func (ds *defaultStore) IterMemPackage() <-chan *std.MemPackage {
 		if err != nil {
 			panic(err)
 		}
-		ch := make(chan *std.MemPackage, 0)
+		ch := make(chan *std.MemPackage)
 		go func() {
 			for i := uint64(1); i <= uint64(ctr); i++ {
 				idxkey := []byte(backendPackageIndexKey(i))
@@ -990,6 +1037,9 @@ func (ds *defaultStore) ClearObjectCache() {
 	ds.opslog = nil // new ops log.
 	ds.SetCachePackage(Uverse())
 }
+
+// func (ds *defaultStore) CacheExists(oid ObjectID) bool {
+// }
 
 func (ds *defaultStore) GarbageCollectObjectCache(gcCycle int64) {
 	for objId, obj := range ds.cacheObjects {
@@ -1075,7 +1125,7 @@ func backendNodeKey(loc Location) string {
 }
 
 func backendPackageIndexCtrKey() string {
-	return fmt.Sprintf("pkgidx:counter")
+	return "pkgidx:counter"
 }
 
 func backendPackageIndexKey(index uint64) string {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,6 +106,7 @@ func TestFiles(t *testing.T) {
 				t.Parallel()
 				opts = newOpts()
 			}
+			fmt.Println("======TestFiles......")
 			changed, err := opts.RunFiletest(path, content, opts.TestStore)
 			if err != nil {
 				t.Fatal(err.Error())
@@ -141,7 +141,7 @@ func TestStdlibs(t *testing.T) {
 			capture = new(bytes.Buffer)
 			out = capture
 		}
-		opts = test.NewTestOptions(rootDir, out, out)
+		opts = test.NewTestOptions(rootDir, out, out, nil)
 		opts.Verbose = true
 		return
 	}
@@ -160,7 +160,7 @@ func TestStdlibs(t *testing.T) {
 		fp := filepath.Join(dir, path)
 
 		// Exclude empty directories.
-		files, err := ioutil.ReadDir(fp)
+		files, err := os.ReadDir(fp)
 		hasFiles := false
 		if err != nil {
 			return err

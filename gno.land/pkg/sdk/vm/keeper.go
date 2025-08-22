@@ -19,7 +19,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/gnolang/gno/gno.land/pkg/gnoland/ugnot"
 	"github.com/gnolang/gno/gnovm/pkg/doc"
 	"github.com/gnolang/gno/gnovm/pkg/gnoenv"
@@ -239,6 +238,7 @@ func (tsc *testStdlibCache) memPackageGetter(source gno.Store) gno.MemPackageGet
 }
 
 func (tsg testStdlibGetter) GetMemPackage(pkgPath string) *std.MemPackage {
+	fmt.Println("================GetMemPackage for stdlibs...")
 	// Only stdlibs have alternative versions.
 	if !gno.IsStdlib(pkgPath) {
 		return tsg.source.GetMemPackage(pkgPath)
@@ -271,9 +271,7 @@ func (tsg testStdlibGetter) GetMemPackage(pkgPath string) *std.MemPackage {
 	if sourceMpkg != nil {
 		testMpkg.Files = slices.Concat(sourceMpkg.Files, testMpkg.Files)
 	}
-	if pkgPath == "testing" {
-		spew.Dump(sourceMpkg)
-	}
+
 	tsg.cacheMtx.Lock()
 	tsg.cache[pkgPath] = testMpkg
 	tsg.cacheMtx.Unlock()
@@ -386,7 +384,7 @@ func (vm *VMKeeper) checkNamespacePermission(ctx sdk.Context, creator crypto.Add
 
 	// call sysNamesPkg.IsAuthorizedAddressForName("<user>")
 	// We only need to check by name here, as addresses have already been checked
-	mpv := gno.NewPackageNode("main", "main", nil).NewPackage()
+	mpv := gno.NewPackageNode("main", "main", nil).NewPackage(m.Alloc)
 	m.SetActivePackage(mpv)
 	m.RunDeclaration(gno.ImportD("names", sysNamesPkg))
 	x := gno.Call(
@@ -455,13 +453,13 @@ func (vm *VMKeeper) AddPackage(ctx sdk.Context, msg MsgAddPackage) (err error) {
 	if _, ok := gno.IsGnoRunPath(pkgPath); ok {
 		return ErrInvalidPkgPath("reserved package name: " + pkgPath)
 	}
-
 	opts := gno.TypeCheckOptions{
 		Getter:     gnostore,
 		TestGetter: vm.testStdlibCache.memPackageGetter(gnostore),
 		Mode:       gno.TCLatestStrict,
 		Cache:      vm.getTypeCheckCache(ctx),
 	}
+
 	if ctx.BlockHeight() == 0 {
 		opts.Mode = gno.TCGenesisStrict // genesis time, waive blocking rules for importing draft packages.
 	}
@@ -571,7 +569,7 @@ func (vm *VMKeeper) Call(ctx sdk.Context, msg MsgCall) (res string, err error) {
 	// Make main Package with imports.
 	mpn := gno.NewPackageNode("main", "", nil)
 	mpn.Define("pkg", gno.TypedValue{T: &gno.PackageType{}, V: pv})
-	mpv := mpn.NewPackage()
+	mpv := mpn.NewPackage(gnostore.GetAllocator())
 	// Parse expression.
 	argslist := ""
 	for i := range msg.Args {
@@ -626,6 +624,7 @@ func (vm *VMKeeper) Call(ctx sdk.Context, msg MsgCall) (res string, err error) {
 		Params:          NewSDKParams(vm.prmk, ctx),
 		EventLogger:     ctx.EventLogger(),
 	}
+	fmt.Println("======Call...")
 	// Construct machine and evaluate.
 	m := gno.NewMachineWithOptions(
 		gno.MachineOptions{
@@ -1082,7 +1081,7 @@ func (vm *VMKeeper) QueryDoc(ctx sdk.Context, pkgPath string) (*doc.JSONDocument
 	if err != nil {
 		return nil, err
 	}
-	return d.WriteJSONDocumentation()
+	return d.WriteJSONDocumentation(nil)
 }
 
 // QueryStorage returns storage and deposit for a realm.
@@ -1116,8 +1115,17 @@ func (vm *VMKeeper) processStorageDeposit(ctx sdk.Context, caller crypto.Address
 		depositAmt = std.MustParseCoin(params.DefaultDeposit).Amount
 	}
 	price := std.MustParseCoin(params.StoragePrice)
+
+	// Sort paths for determinism
+	sortedRealm := make([]string, 0, len(realmDiffs))
+	for path := range realmDiffs {
+		sortedRealm = append(sortedRealm, path)
+	}
+	slices.SortFunc(sortedRealm, strings.Compare)
+
 	var allErrs error
-	for rlmPath, diff := range realmDiffs {
+	for _, rlmPath := range sortedRealm {
+		diff := realmDiffs[rlmPath]
 		if diff == 0 {
 			continue
 		}

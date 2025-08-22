@@ -1,7 +1,11 @@
 // MAXALLOC: 100000000
 package main
 
-import "runtime"
+import (
+	"runtime"
+
+	"gno.land/r/demo/ext"
+)
 
 var s = "hello world" // NOTE, this counts twice for now, should improve.
 
@@ -10,6 +14,7 @@ func main() {
 	s1 := s  //  another string value, underlying array same
 	runtime.GC()
 	println("MemStats: ", runtime.MemStats())
+	ext.GetVar()
 }
 
 // Output:

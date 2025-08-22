@@ -34,7 +34,7 @@ type Value interface {
 	// receiver, and RefValue returns another type entirely.
 	DeepFill(store Store) Value
 
-	GetShallowSize() int64
+	GetShallowSize(withRef bool) int64
 	VisitAssociated(vis Visitor) (stop bool) // for GC
 }
 
@@ -201,7 +201,7 @@ func (pv *PointerValue) GetBase(store Store) Object {
 	case nil:
 		return nil
 	case RefValue:
-		base := store.GetObject(cbase.ObjectID).(Object)
+		base := store.GetObject(cbase.ObjectID)
 		pv.Base = base
 		return base
 	case Object:
@@ -791,22 +791,27 @@ func (pv *PackageValue) IsRealm() bool {
 	return IsRealmPath(pv.PkgPath)
 }
 
-func (pv *PackageValue) getFBlocksMap() map[string]*Block {
+func (pv *PackageValue) getFBlocksMap(alloc *Allocator) map[string]*Block {
 	if pv.fBlocksMap == nil {
+		alloc.AllocateMap(int64(len(pv.FNames)))
 		pv.fBlocksMap = make(map[string]*Block, len(pv.FNames))
 	}
 	return pv.fBlocksMap
 }
 
 // called after loading *PackageValue.
-func (pv *PackageValue) deriveFBlocksMap(store Store) {
+func (pv *PackageValue) deriveFBlocksMap(alloc *Allocator, store Store) {
+	// XXX, allocation?
 	if pv.fBlocksMap == nil {
 		pv.fBlocksMap = make(map[string]*Block, len(pv.FNames))
 	}
 	for i := range pv.FNames {
 		fname := pv.FNames[i]
-		fblock := pv.GetFileBlock(store, fname)
+		fmt.Println("======deriveFBlocksMap, fname: ", fname)
+		fblock := pv.GetFileBlock(alloc, store, fname)
+		fmt.Println("======fblock... ", fblock)
 		pv.fBlocksMap[fname] = fblock // idempotent.
+		// XXX FBlocks...
 	}
 }
 
@@ -814,12 +819,14 @@ func (pv *PackageValue) deriveFBlocksMap(store Store) {
 // of the block.
 func (pv *PackageValue) GetBlock(store Store) *Block {
 	bv := pv.Block
+	fmt.Printf("======GetBlock for pkgPath: %s, (type of pv.Block: %v)\n", pv.PkgPath, reflect.TypeOf(bv))
 	switch bv := bv.(type) {
 	case RefValue:
 		bb := store.GetObject(bv.ObjectID).(*Block)
 		pv.Block = bb
 		for i := range bb.Values {
 			tv := &bb.Values[i]
+			fmt.Println("======fill value of block...")
 			fillValueTV(store, tv)
 		}
 		return bb
@@ -837,7 +844,7 @@ func (pv *PackageValue) GetValueAt(store Store, path ValuePath) TypedValue {
 		TV)
 }
 
-func (pv *PackageValue) AddFileBlock(fname string, fb *Block) {
+func (pv *PackageValue) AddFileBlock(alloc *Allocator, fname string, fb *Block) {
 	for _, fn := range pv.FNames {
 		if fname == fn {
 			panic(fmt.Sprintf(
@@ -845,14 +852,16 @@ func (pv *PackageValue) AddFileBlock(fname string, fb *Block) {
 				fname))
 		}
 	}
+	// XXX, alloc properly, by checking cap?
 	pv.FNames = append(pv.FNames, fname)
 	pv.FBlocks = append(pv.FBlocks, fb)
-	pv.getFBlocksMap()[fname] = fb
+	pv.getFBlocksMap(alloc)[fname] = fb
 	fb.SetOwner(pv)
 }
 
-func (pv *PackageValue) GetFileBlock(store Store, fname string) *Block {
-	if fb, ex := pv.getFBlocksMap()[fname]; ex {
+func (pv *PackageValue) GetFileBlock(alloc *Allocator, store Store, fname string) *Block {
+	// XXX, or allocate here?
+	if fb, ex := pv.getFBlocksMap(alloc)[fname]; ex {
 		return fb
 	}
 	for i, fn := range pv.FNames {
@@ -861,10 +870,10 @@ func (pv *PackageValue) GetFileBlock(store Store, fname string) *Block {
 			switch fbv := fbv.(type) {
 			case RefValue:
 				fb := store.GetObject(fbv.ObjectID).(*Block)
-				pv.getFBlocksMap()[fname] = fb
+				pv.getFBlocksMap(alloc)[fname] = fb
 				return fb
 			case *Block:
-				pv.getFBlocksMap()[fname] = fbv
+				pv.getFBlocksMap(alloc)[fname] = fbv
 				return fbv
 			default:
 				panic("should not happen")
@@ -985,8 +994,7 @@ func (tv *TypedValue) IsNilInterface() bool {
 		}
 		if debug {
 			if tv.N != [8]byte{} {
-				panic(fmt.Sprintf(
-					"corrupted TypeValue (nil interface)"))
+				panic("corrupted TypeValue (nil interface)")
 			}
 		}
 		return false
@@ -1546,8 +1554,12 @@ func (tv *TypedValue) ComputeMapKey(store Store, omitType bool) MapKey {
 		bz = append(bz, pbz...)
 	case *PointerType:
 		fillValueTV(store, tv)
-		ptr := uintptr(unsafe.Pointer(tv.V.(PointerValue).TV))
-		bz = append(bz, uintptrToBytes(&ptr)...)
+		var ptrBytes [sizeOfUintPtr]byte // zero-initialized for nil pointers
+		if tv.V != nil {
+			ptr := uintptr(unsafe.Pointer(tv.V.(PointerValue).TV))
+			ptrBytes = uintptrToBytes(&ptr)
+		}
+		bz = append(bz, ptrBytes[:]...)
 	case FieldType:
 		panic("field (pseudo)type cannot be used as map key")
 	case *ArrayType:
@@ -1668,7 +1680,7 @@ func (tv *TypedValue) GetPointerToFromTV(alloc *Allocator, store Store, path Val
 	// NOTE: path will be mutated.
 	// NOTE: this code segment similar to that in op_types.go
 	var dtv *TypedValue
-	var isPtr bool = false
+	isPtr := false
 	switch path.Type {
 	case VPField:
 		switch path.Depth {
@@ -2111,9 +2123,9 @@ func (tv *TypedValue) GetSlice(alloc *Allocator, low, high int) TypedValue {
 				V: alloc.NewString(tv.GetString()[low:high]),
 			}
 		}
-		panic(&Exception{Value: typedString(fmt.Sprintf(
+		panic(&Exception{Value: typedString(
 			"non-string primitive type cannot be sliced",
-		))})
+		)})
 	case *ArrayType:
 		if tv.GetLength() < high {
 			panic(&Exception{Value: typedString(fmt.Sprintf(
@@ -2143,8 +2155,7 @@ func (tv *TypedValue) GetSlice(alloc *Allocator, low, high int) TypedValue {
 		}
 		if tv.V == nil {
 			if low != 0 || high != 0 {
-				panic(&Exception{Value: typedString(fmt.Sprintf(
-					"nil slice index out of range"))})
+				panic(&Exception{Value: typedString("nil slice index out of range")})
 			}
 			return TypedValue{
 				T: tv.T,
@@ -2284,8 +2295,7 @@ type Block struct {
 }
 
 // NOTE: for allocation, use *Allocator.NewBlock.
-// XXX pass allocator in for heap items.
-func NewBlock(source BlockNode, parent *Block) *Block {
+func NewBlock(alloc *Allocator, source BlockNode, parent *Block) *Block {
 	numNames := source.GetNumNames()
 	values := make([]TypedValue, numNames)
 	// Keep in sync with ExpandWith().
@@ -2296,7 +2306,7 @@ func NewBlock(source BlockNode, parent *Block) *Block {
 		// Indicates must always be heap item.
 		values[i] = TypedValue{
 			T: heapItemType{},
-			V: &HeapItemValue{},
+			V: alloc.NewHeapItem(TypedValue{}),
 		}
 	}
 	return &Block{
@@ -2630,6 +2640,10 @@ func typedString(s string) TypedValue {
 
 // returns the same tv instance for convenience.
 func fillValueTV(store Store, tv *TypedValue) *TypedValue {
+	// fmt.Println("======fillValueTV...")
+	if store != nil {
+		fmt.Println("======store.GetAllocator(): ", store.GetAllocator())
+	}
 	switch cv := tv.V.(type) {
 	case *HeapItemValue:
 		fillValueTV(store, &cv.Value)

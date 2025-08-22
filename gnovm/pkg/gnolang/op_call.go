@@ -30,8 +30,7 @@ func (m *Machine) doOpPrecall() {
 		// replace the first nil arg with a new realm.
 		if cx.IsWithCross() {
 			if !isCrossing { // sanity
-				panic(fmt.Sprintf(
-					"non-crossing function in cross call"))
+				panic("non-crossing function in cross call")
 			}
 			niltv := m.PeekValue(cx.NumArgs)
 			if !niltv.IsUndefined() { // sanity
@@ -53,8 +52,7 @@ func (m *Machine) doOpPrecall() {
 		// replace the first nil arg with a new realm.
 		if cx.IsWithCross() {
 			if !isCrossing { // sanity
-				panic(fmt.Sprintf(
-					"non-crossing function in cross call"))
+				panic("non-crossing function in cross call")
 			}
 			niltv := m.PeekValue(cx.NumArgs)
 			if !niltv.IsUndefined() { // sanity
@@ -145,6 +143,10 @@ func (m *Machine) doOpCall() {
 	ft := fr.Func.GetType(m.Store)
 	// Create new block scope.
 	pb := fr.Func.GetParent(m.Store)
+	fmt.Println("======doOpCall, AllocBlock, fs: ", fs)
+	fmt.Println("=====m.Alloc: ", m.Alloc)
+	fmt.Println("=====m.Store.GetAllocator: ", m.Store.GetAllocator())
+	m.Store.SetAllocator(m.Alloc)
 	b := m.Alloc.NewBlock(fs, pb)
 
 	// Copy *FuncValue.Captures into block

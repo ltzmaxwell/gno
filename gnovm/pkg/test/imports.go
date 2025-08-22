@@ -45,6 +45,9 @@ type StoreOptions struct {
 	// When fixing code from an earler gno version. Not supported for stdlibs.
 	FixFrom string
 
+	// Preloaded packages
+	Packages packages.PkgList
+
 	// SourceStore, if given, is used to process imports, whenever a custom
 	// version doesn't exist in the testing standard libraries.
 	// This ignores the value of WithExtern.
@@ -59,6 +62,7 @@ type StoreOptions struct {
 func ProdStore(
 	rootDir string,
 	output io.Writer,
+	pkgs packages.PkgList,
 ) (
 	baseStore storetypes.CommitStore,
 	gnoStore gno.Store,
@@ -69,6 +73,7 @@ func ProdStore(
 		StoreOptions{
 			WithExamples: true,
 			Testing:      false,
+			Packages:     pkgs,
 		},
 	)
 }
@@ -79,6 +84,7 @@ func ProdStore(
 func TestStore(
 	rootDir string,
 	output io.Writer,
+	pkgs packages.PkgList,
 ) (
 	baseStore storetypes.CommitStore,
 	gnoStore gno.Store,
@@ -89,6 +95,7 @@ func TestStore(
 		StoreOptions{
 			WithExamples: true,
 			Testing:      true,
+			Packages:     pkgs,
 		},
 	)
 }
@@ -112,6 +119,7 @@ func StoreWithOptions(
 		m *gno.Machine, mpkg *std.MemPackage, save bool) (
 		pn *gno.PackageNode, pv *gno.PackageValue,
 	) {
+		println("==============_processMemPackage...")
 		// _processMemPackage should only be called for "prod" packages.
 		// filetests/extern are MPStdlibProd, and examples are MPUserProd.
 		// (pkg/test/test.go Test() will filter for MPFTest and store
@@ -124,6 +132,7 @@ func StoreWithOptions(
 			return nil, nil
 		}
 		if opts.PreprocessOnly {
+			println("===============PreprocessOnly...")
 			// Check the gno.mod gno version.
 			mod, err := gno.ParseCheckGnoMod(mpkg)
 			if err != nil {
@@ -159,8 +168,11 @@ func StoreWithOptions(
 	//----------------------------------------
 	// Main entrypoint for new test imports.
 	getPackage := func(pkgPath string, store gno.Store) (pn *gno.PackageNode, pv *gno.PackageValue) {
+		fmt.Println("======pkgGetter, pkgPath: ", pkgPath)
+		alloc := store.GetAllocator()
+		fmt.Println("======allocator: ", alloc)
 		if pkgPath == "" {
-			panic(fmt.Sprintf("invalid zero package path in testStore().pkgGetter"))
+			panic("invalid zero package path in testStore().pkgGetter")
 		}
 		if opts.WithExtern {
 			// if _test package... pretend stdlib.
@@ -177,6 +189,7 @@ func StoreWithOptions(
 					Context:       ctx,
 					ReviveEnabled: true,
 					SkipPackage:   true,
+					Alloc:         alloc,
 				})
 				return _processMemPackage(m2, mpkg, true)
 			}
@@ -214,28 +227,37 @@ func StoreWithOptions(
 			}
 		}
 
-		// if examples package...
+		loadFromDir := func(dir string) (pn *gno.PackageNode, pv *gno.PackageValue) {
+			mpkg := gno.MustReadMemPackage(dir, pkgPath, gno.MPUserProd)
+			if mpkg.IsEmpty() {
+				panic(fmt.Sprintf("found an empty package %q", pkgPath))
+			}
+			send := std.Coins{}
+			ctx := Context("", pkgPath, send)
+			m2 := gno.NewMachineWithOptions(gno.MachineOptions{
+				PkgPath:       pkgPath,
+				Output:        output,
+				Store:         store,
+				Context:       ctx,
+				ReviveEnabled: true,
+				SkipPackage:   true,
+			})
+			return _processMemPackage(m2, mpkg, true)
+		}
+
+		// If available in loaded packages
+		if pkg := opts.Packages.Get(pkgPath); pkg != nil {
+			return loadFromDir(pkg.Dir)
+		}
+
 		if opts.WithExamples {
+			// if examples package...
 			examplePath := filepath.Join(rootDir, "examples", pkgPath)
 			if osm.DirExists(examplePath) {
-				mpkg := gno.MustReadMemPackage(examplePath, pkgPath, gno.MPUserProd)
-				if mpkg.IsEmpty() {
-					panic(fmt.Sprintf("found an empty package %q", pkgPath))
-				}
-
-				send := std.Coins{}
-				ctx := Context("", pkgPath, send)
-				m2 := gno.NewMachineWithOptions(gno.MachineOptions{
-					PkgPath:       pkgPath,
-					Output:        output,
-					Store:         store,
-					Context:       ctx,
-					ReviveEnabled: true,
-					SkipPackage:   true,
-				})
-				return _processMemPackage(m2, mpkg, true)
+				return loadFromDir(examplePath)
 			}
 		}
+
 		return nil, nil
 	}
 
@@ -270,6 +292,8 @@ func loadStdlib(
 	preprocessOnly bool,
 	testing bool,
 ) (*gno.PackageNode, *gno.PackageValue) {
+	fmt.Println("======loadStdlib..., pkgPath: ", pkgPath)
+	fmt.Println("======store.GetAllocator: ", store.GetAllocator())
 	dirs := []string{
 		// Normal stdlib path.
 		stdlibLocation(rootDir, pkgPath),
@@ -311,6 +335,7 @@ func loadStdlib(
 		Store:         store,
 		ReviveEnabled: true,
 		SkipPackage:   true, // will PreprocessFiles() or RunMemPackage() after.
+		Alloc:         store.GetAllocator(),
 	})
 	if preprocessOnly {
 		m2.Store.AddMemPackage(mpkg, mPkgType)
@@ -336,6 +361,7 @@ func (e *stackWrappedError) String() string {
 // imports are pre-loaded in a permanent store, so that the tests can use
 // ephemeral transaction stores.
 func LoadImports(store gno.Store, mpkg *std.MemPackage, abortOnError bool) (err error) {
+	fmt.Println("======LoadImports to TestStore, mpkg.Path: ", mpkg.Path)
 	// If this gets out of hand (e.g. with nested catchPanic with need for
 	// selective catching) then pass in a bool instead.
 	// See also cmd/gno/common.go.
@@ -374,9 +400,11 @@ func LoadImports(store gno.Store, mpkg *std.MemPackage, abortOnError bool) (err 
 		packages.FileKindXTest,
 	)
 	for _, imp := range imports {
+		fmt.Println("======imp: ", imp)
 		if gno.IsRealmPath(imp.PkgPath) {
 			// Don't eagerly load realms.
 			// Realms persist state and can change the state of other realms in initialization.
+			fmt.Println("======skip realm while importing..., path: ", imp.PkgPath)
 			continue
 		}
 		if !abortOnError {
@@ -386,6 +414,7 @@ func LoadImports(store gno.Store, mpkg *std.MemPackage, abortOnError bool) (err 
 				}
 			}()
 		}
+		fmt.Println("======GetPackage, imp.PkgPath: ", imp.PkgPath)
 		// Get package from store, recursively as necessary.
 		pkg := store.GetPackage(imp.PkgPath, true)
 		if abortOnError && pkg == nil {
