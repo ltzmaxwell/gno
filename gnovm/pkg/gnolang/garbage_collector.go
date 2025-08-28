@@ -33,13 +33,16 @@ type Visitor func(v Value) (stop bool)
 //	impl, whether it re-uses the same Type or not.
 //
 // XXX: make sure tv.T isn't bumped from allocation either.
+// XXX: record original value and verify after GC
 func (m *Machine) GarbageCollect() (left int64, ok bool) {
 	// times objects are visited for gc
 	var visitCount int64
 
 	defer func() {
 		gasCPU := overflow.Mulp(visitCount*VisitCpuFactor, GasFactorCPU)
-		visitCount = 0
+		if debug {
+			debug.Printf("GasConsumed for GC: %v\n", gasCPU)
+		}
 		if m.GasMeter != nil {
 			m.GasMeter.ConsumeGas(gasCPU, "GC")
 		}
@@ -56,7 +59,7 @@ func (m *Machine) GarbageCollect() (left int64, ok bool) {
 	m.GCCycle += 1
 
 	// Construct visitor callback.
-	vis := GCVisitorFn(m.GCCycle, m.Alloc, visitCount)
+	vis := GCVisitorFn(m.GCCycle, m.Alloc, &visitCount)
 
 	// Visit blocks
 	for _, block := range m.Blocks {
@@ -81,6 +84,14 @@ func (m *Machine) GarbageCollect() (left int64, ok bool) {
 	stop := vis(m.Package)
 	if stop {
 		return -1, false
+	}
+
+	// Visit staging package
+	if tpv := m.Store.GetStagingPackage(); tpv != nil {
+		stop = vis(tpv)
+		if stop {
+			return -1, false
+		}
 	}
 
 	// Visit exceptions
@@ -113,7 +124,7 @@ func (m *Machine) GarbageCollect() (left int64, ok bool) {
 
 // Returns a visitor that bumps the GCCycle counter
 // and stops if alloc is out of memory.
-func GCVisitorFn(gcCycle int64, alloc *Allocator, visitCount int64) Visitor {
+func GCVisitorFn(gcCycle int64, alloc *Allocator, visitCount *int64) Visitor {
 	var vis func(value Value) bool
 
 	vis = func(v Value) bool {
@@ -130,12 +141,15 @@ func GCVisitorFn(gcCycle int64, alloc *Allocator, visitCount int64) Visitor {
 			if oo.GetLastGCCycle() == gcCycle {
 				return false // but don't stop
 			}
+
+			// check cache
 		}
 
-		visitCount++ // Count operations for gas calculation
+		*visitCount++ // Count operations for gas calculation
 
 		// Add object size to alloc.
-		size := v.GetShallowSize()
+		withRef := false
+		size := v.GetShallowSize(withRef)
 
 		// Stop if alloc max exceeded during GC.
 		// NOTE: Unlikely to occur, but keep it here for
@@ -149,7 +163,7 @@ func GCVisitorFn(gcCycle int64, alloc *Allocator, visitCount int64) Visitor {
 		alloc.Allocate(size)
 
 		// bump before visiting associated,
-		// this avoids infinite recurse.
+		// this avoids infinite recursion.
 		if oo, isObject := v.(Object); isObject {
 			oo.SetLastGCCycle(gcCycle)
 		}
@@ -298,6 +312,13 @@ func (pv *PackageValue) VisitAssociated(vis Visitor) (stop bool) {
 }
 
 func (b *Block) VisitAssociated(vis Visitor) (stop bool) {
+	// skip .uverse
+	if pn, ok := b.Source.(*PackageNode); ok {
+		if pn.PkgPath == ".uverse" {
+			return
+		}
+	}
+
 	// Visit each value.
 	for i := 0; i < len(b.Values); i++ {
 		v := b.Values[i].V
