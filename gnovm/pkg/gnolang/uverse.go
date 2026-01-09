@@ -405,7 +405,7 @@ func makeUverseNode() {
 				arg0Capacity := arg0Value.Maxcap
 				arg0Base := arg0Value.GetBase(m.Store)
 				// NOTE, ANY MODIFICATION TO arg0 SHOULD ALWAYS CALL
-				// m.Realm.DidUpdate(arg0Base, nil, nil) FIRST TO CHECK WRITE PERMISSIONS.
+				// x.MustBeWritable() FIRST TO CHECK WRITE PERMISSIONS.
 				switch arg1Value := arg1.TV.V.(type) {
 				// ------------------------------------------------------------
 				// append(*SliceValue, nil)
@@ -428,8 +428,7 @@ func makeUverseNode() {
 							// DEFENSIVE: in this case, we're writing data directly
 							// into the backing array of arg0. Ensure we can write
 							// to it.
-							m.Realm.DidUpdate(arg0Base, nil, nil)
-
+							arg0Base.MustBeWritableBy(m.Realm)
 							if arg0Base.Data == nil {
 								// append(*SliceValue.List, *SliceValue) ---------
 								list := arg0Base.List
@@ -441,7 +440,7 @@ func makeUverseNode() {
 										newElem := arg1Base.List[arg1Offset+i].unrefCopy(m.Alloc, m.Store)
 										list[arg0Offset+arg0Length+i] = newElem
 
-										m.Realm.DidUpdate(
+										m.Realm.DidUpdate2(
 											arg0Base,
 											oldElem.GetFirstObject(m.Store),
 											newElem.GetFirstObject(m.Store),
@@ -607,7 +606,7 @@ func makeUverseNode() {
 				dstv := dst.TV.V.(*SliceValue)
 				// Guard for protecting dst against mutation by external realms.
 				dstBase := dstv.GetBase(m.Store)
-				m.Realm.DidUpdate(dstBase, nil, nil)
+				dstBase.MustBeWritableBy(m.Realm)
 				// TODO: consider an optimization if dstv.Data != nil.
 				for i := range minl {
 					dstev := dstv.GetPointerAtIndexInt2(m.Store, i, bdt.Elt)
@@ -633,7 +632,7 @@ func makeUverseNode() {
 				dstv := dst.TV.V.(*SliceValue)
 				// Guard for protecting dst against mutation by external realms.
 				dstBase := dstv.GetBase(m.Store)
-				m.Realm.DidUpdate(dstBase, nil, nil)
+				dstBase.MustBeWritableBy(m.Realm)
 				srcv := src.TV.V.(*SliceValue)
 				for i := range minl {
 					dstev := dstv.GetPointerAtIndexInt2(m.Store, i, bdt.Elt)

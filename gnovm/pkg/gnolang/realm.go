@@ -176,29 +176,29 @@ func (rlm *Realm) String() string {
 // xo or co is nil if the element value is undefined or has no
 // associated object.
 func (rlm *Realm) DidUpdate(po, xo, co Object) {
-	if bm.OpsEnabled {
-		bm.PauseOpCode()
-		defer bm.ResumeOpCode()
-	}
-	if rlm == nil {
-		return
-	}
 	if debugRealm {
 		if co != nil && co.GetIsDeleted() {
 			panic("cannot attach a deleted object")
 		}
-		if po != nil && po.GetIsTransient() {
-			panic("cannot attach to a transient object")
-		}
-		if po != nil && po.GetIsDeleted() {
-			panic("cannot attach to a deleted object")
-		}
+	}
+
+	po.MustBeWritableBy(rlm)
+	rlm.DidUpdate2(po, xo, co)
+}
+
+// DidUpdate2 performs the actual update to po.
+// Should Use only when po is already known to be writable.
+func (rlm *Realm) DidUpdate2(po, xo, co Object) {
+	if bm.OpsEnabled {
+		bm.PauseOpCode()
+		defer bm.ResumeOpCode()
+	}
+
+	if rlm == nil {
+		return
 	}
 	if po == nil || !po.GetIsReal() {
 		return // do nothing.
-	}
-	if po.GetObjectID().PkgID != rlm.ID {
-		panic(&Exception{Value: typedString("cannot modify external-realm or non-realm object")})
 	}
 
 	// XXX check if this boosts performance

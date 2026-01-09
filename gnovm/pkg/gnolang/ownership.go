@@ -130,6 +130,8 @@ type Object interface {
 	GetLastGCCycle() int64
 	SetLastGCCycle(int64)
 
+	MustBeWritableBy(rlm *Realm)
+
 	// Saves to realm along the way if owned, and also (dirty
 	// or new).
 	// ValueImage(rlm *Realm, owned bool) *ValueImage
@@ -362,6 +364,29 @@ func (oi *ObjectInfo) GetLastGCCycle() int64 {
 
 func (oi *ObjectInfo) SetLastGCCycle(c int64) {
 	oi.lastGCCycle = c
+}
+
+func (oi *ObjectInfo) MustBeWritableBy(rlm *Realm) {
+	if rlm == nil {
+		return
+	}
+
+	// XXX add the private obj check here.
+
+	if debugRealm {
+		if oi != nil && oi.GetIsTransient() {
+			panic("cannot attach to a transient object")
+		}
+		if oi != nil && oi.GetIsDeleted() {
+			panic("cannot attach to a deleted object")
+		}
+	}
+	if oi == nil || !oi.GetIsReal() {
+		return // do nothing.
+	}
+	if oi.GetObjectID().PkgID != rlm.ID {
+		panic(&Exception{Value: typedString("cannot modify external-realm or non-realm object")})
+	}
 }
 
 func (oi *ObjectInfo) GetIsTransient() bool {
