@@ -125,6 +125,14 @@ _test.filetest:
 	@echo "use 'go test pkg/gnolang/files_test.go -test.short --update-golden-tests' to update filetest expectations"
 	go test pkg/gnolang/files_test.go -test.short -run 'TestFiles$$/' $(GOTEST_FLAGS)
 
+.PHONY: _test.filetest.long
+_test.filetest.long:
+	go test pkg/gnolang/files_test.go -run 'TestFiles$$/.*_long' $(GOTEST_FLAGS)
+
+.PHONY: _test.filetest.all
+_test.filetest.all:
+	go test pkg/gnolang/files_test.go -run 'TestFiles$$/' $(GOTEST_FLAGS)
+
 ########################################
 # Code gen
 .PHONY: generate
