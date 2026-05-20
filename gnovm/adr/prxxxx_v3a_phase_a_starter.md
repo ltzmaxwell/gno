@@ -132,6 +132,8 @@ v3a (designed in `gnovm/adr/interrealm_v3a.md`) addresses both via:
 | `/p/n2p5/mgroup` | v2 shape | v3a runtime.Caller |
 | `/p/nt/pausable/v0` | v2 shape | v3a runtime.Caller |
 | `/p/agherasie/forms` | v2 shape | v3a runtime.Caller |
+| `/p/thox/snowflake` | v2 shape | v3a runtime.Caller |
+| `/p/demo/nestedpkg` | v2 shape | v3a runtime.Self + runtime.Caller (path-based ACL) |
 
 ## Phase A.2/A.3 — substantive work already in v2 substrate
 
