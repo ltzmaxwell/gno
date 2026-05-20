@@ -12,6 +12,7 @@
 package snowflake
 
 import (
+	"chain/runtime"
 	"encoding/binary"
 	"encoding/hex"
 	"time"
@@ -45,9 +46,9 @@ type SnowflakeID struct {
 
 // NewSnowflakeID constructs a SnowflakeID with machineID = 0. Callers
 // who want a realm-derived machineID should follow up with
-// SetMachineID(0, cur). Split from the constructor so the constructor
-// stays usable in non-crossing contexts (e.g. package-level var init,
-// where there's no rlm in scope).
+// SetMachineID(). Split from the constructor so the constructor
+// stays usable in contexts (e.g. package-level var init) where there's
+// no caller frame for runtime.Caller() to resolve.
 func NewSnowflakeID() *SnowflakeID {
 	return &SnowflakeID{
 		startTime: startTime,
@@ -86,16 +87,10 @@ func (s *SnowflakeID) getTimenow() uint64 {
 	return uint64(time.Now().UnixMilli())
 }
 
-// SetMachineID derives the machine ID from the caller's address. rlm
-// must be the caller's own captured cur; the caller is
-// rlm.Previous().Address(). Pre-migration used runtime.PreviousRealm()
-// which a non-crossing wrapper could spoof, producing a machineID
-// computed from the wrong address.
-func (s *SnowflakeID) SetMachineID(_ int, rlm realm) {
-	if !rlm.IsCurrent() {
-		panic("snowflake: rlm does not match the current crossing frame")
-	}
-	caller := rlm.Previous().Address()
+// SetMachineID derives the machine ID from the caller's address.
+// Caller identity sourced from runtime.Caller() — omarsy-free.
+func (s *SnowflakeID) SetMachineID() {
+	caller := runtime.Caller().Address()
 	machineID := uint64(0)
 	for _, c := range caller.String() {
 		machineID += uint64(c)
