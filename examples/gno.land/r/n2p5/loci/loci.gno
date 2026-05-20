@@ -17,12 +17,18 @@ func init() {
 // Set takes a base64 encoded string and stores it in the Loci store.
 // Keyed by the address of the caller. It also emits a "set" event with
 // the address of the caller.
+//
+// `cur realm` is preserved on this /r/ entry point because /r/ exports
+// remain crossing functions in the v2 model — m.Realm shifts to
+// /r/n2p5/loci on entry so writes hit this realm's storage. The /p/
+// helper call (store.Set) is the v3a-migrated form: no `cur` argument,
+// caller identity sourced internally via runtime.Caller().
 func Set(cur realm, value string) {
 	b, err := base64.StdEncoding.DecodeString(value)
 	if err != nil {
 		panic(err)
 	}
-	store.Set(0, cur, b)
+	store.Set(b)
 	chain.Emit("SetValue", "ForAddr", string(cur.Previous().Address()))
 }
 
