@@ -24,6 +24,31 @@ func PreviousRealm() Realm {
 	return Realm{address(addr), path}
 }
 
+// Caller returns the realm of the frame that crossed into this realm —
+// the v3a-aligned identity query. Equivalent to PreviousRealm under the
+// current substrate (same walk machinery), but exposed as the canonical
+// new-API name. Library helpers should use Caller() instead of taking a
+// `rlm realm` parameter — that's the v2 pattern omarsy demonstrated is
+// forgeable. The Realm value returned by Caller is a concrete struct
+// constructed by the VM; user code has no path to supply a different
+// Realm where Caller's return was used.
+func Caller() Realm {
+	return PreviousRealm()
+}
+
+// Self returns the realm currently executing this code. Equivalent to
+// CurrentRealm, exposed under the v3a-aligned name.
+func Self() Realm {
+	return CurrentRealm()
+}
+
+// Origin returns the EOA realm that initiated the transaction (the bottom
+// of the realm-transition stack). Equivalent to looking up the originating
+// address but returned as a Realm value with empty pkgPath.
+func Origin() Realm {
+	return Realm{addr: address(originCaller()), pkgPath: ""}
+}
+
 // GetSessionInfo returns session metadata if the current transaction was
 // signed by a session key. Returns isSession=false for master-key transactions.
 //
