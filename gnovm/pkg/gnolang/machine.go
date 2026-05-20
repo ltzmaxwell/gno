@@ -2340,12 +2340,12 @@ func (m *Machine) PushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, is
 			//
 			// Narrow the anchor to the dangerous SHAPE: a
 			// primitive-receiver method whose signature includes a
-			// pointer to a foreign-/p/-declared type. Legit
-			// methods like time.Duration.String() (no foreign
-			// pointer params) and types.String.Less(other any) (param
-			// not a pointer) are not anchored — they continue to
-			// inherit caller's realm so their local allocations
-			// and reads work normally.
+			// pointer to a /p/-declared type (same-pkg or cross-pkg).
+			// Legit methods like time.Duration.String() (no pointer
+			// params) and types.String.Less(other any) (param not a
+			// pointer) are not anchored — they continue to inherit
+			// caller's realm so their local allocations and reads
+			// work normally.
 			//
 			// When the shape matches, anchor authority to the
 			// receiver type's declaring package via
@@ -2353,7 +2353,7 @@ func (m *Machine) PushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, is
 			// stamping context stays at caller's realm). Mark
 			// AuthOnlyShift to suppress the spurious finalize at
 			// frame pop.
-			if ft, ok := fv.Type.(*FuncType); ok && isPrimitiveRecvWithForeignPPtrParam(dt.PkgPath, ft) {
+			if ft, ok := fv.Type.(*FuncType); ok && isPrimitiveRecvWithPPtrParam(dt.PkgPath, ft) {
 				pid := PkgIDFromPkgPath(dt.PkgPath)
 				if m.Realm == nil || pid != m.Realm.ID {
 					dtPkgOID := ObjectIDFromPkgID(pid)
@@ -2366,12 +2366,22 @@ func (m *Machine) PushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, is
 	}
 }
 
-// isPrimitiveRecvWithForeignPPtrParam tests whether a method's
-// signature matches the attacker-supplied-impl shape: at least one
-// parameter is a pointer to a /p/-declared type whose package is
-// different from the method's own (recvPkgPath). The method's
-// receiver is assumed to be primitive-underlying (caller verifies).
-func isPrimitiveRecvWithForeignPPtrParam(recvPkgPath string, ft *FuncType) bool {
+// isPrimitiveRecvWithPPtrParam tests whether a method's signature
+// matches the attacker-supplied-impl shape: at least one parameter
+// is a pointer to a /p/-declared type. The method's receiver is
+// assumed to be primitive-underlying (caller verifies).
+//
+// Earlier revisions required the param's /p/ package to differ from
+// the receiver's package (cross-pkg only). That left a same-pkg
+// variant exploitable: an attacker can declare both the primitive
+// receiver type AND the mutable /p/ type in the same /p/ package,
+// and the predicate would miss it. The generalization drops the
+// pkg-difference check so the anchor fires for any /p/-typed
+// pointer param. Same-pkg "I mutate my own object" patterns are
+// re-routed through the outer `pid != m.Realm.ID` check in
+// PushFrameCall — if the receiver type's pkg already equals
+// m.Realm, no shift happens.
+func isPrimitiveRecvWithPPtrParam(_ string, ft *FuncType) bool {
 	for _, p := range ft.Params {
 		pt, ok := baseOf(p.Type).(*PointerType)
 		if !ok {
@@ -2381,7 +2391,7 @@ func isPrimitiveRecvWithForeignPPtrParam(recvPkgPath string, ft *FuncType) bool 
 		if !ok {
 			continue
 		}
-		if IsPPackagePath(pdt.PkgPath) && pdt.PkgPath != recvPkgPath {
+		if IsPPackagePath(pdt.PkgPath) {
 			return true
 		}
 	}

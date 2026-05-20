@@ -65,3 +65,25 @@ func (i *Immutable) Read() string {
 func (i *Immutable) Apply(fn func(*Immutable)) {
 	fn(i)
 }
+
+// SamePkgEvil is a regression-test fixture for the same-pkg variant
+// of Attack H. EvilMutator (in launderattack.gno) tests the cross-pkg
+// case: the receiver type and the mutable param type are in different
+// /p/ packages. The earlier narrow patch fired only for that case.
+//
+// SamePkgEvil is in launderpkg — the SAME /p/ package as Immutable.
+// If a /p/ library contains both a mutable type and a primitive-recv
+// impl of an interface taking *that mutable type, the narrow patch's
+// cross-pkg check missed it. The generalized anchor (drop the
+// pkg-difference check) closes this case too.
+//
+// Conceptually: a malicious or compromised /p/ author could include
+// SamePkgEvil from the start; or a victim might import a /p/ pkg that
+// declares both the data type and an attacker-shaped impl. Either way
+// the same-pkg shape is a real attack surface that the generalized
+// anchor must defend.
+type SamePkgEvil int
+
+func (SamePkgEvil) Run(i *Immutable) {
+	i.Field = "samepkg-pwnd"
+}
