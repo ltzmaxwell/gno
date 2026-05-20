@@ -174,6 +174,40 @@ What's left for a future PR (not blocking v3a Phase A):
 Phases B (broad migration) and C (surface removal of `cross`/`cur`/`rlm`)
 are entirely follow-on PRs.
 
+## Cascading migrations deferred to follow-up PRs
+
+Three /p/ libraries with v2 patterns were investigated but deferred
+because their migrations cascade into downstream realms with semantic
+or scale implications:
+
+- **`/p/nt/treasury/v0`** — `GRC20Banker.Send` calls `grc20.Teller`
+  methods that use the v2 pattern. Migrating treasury without
+  migrating grc20 leaves an inconsistent Banker interface. grc20
+  itself has 12+ v2-pattern methods and 10+ realm importers
+  (bar20, foo20, grc20factory, grc20reg, atomicswap, tokenhub, etc.).
+  → Treasury + grc20 should be a single follow-up PR.
+
+- **`/p/nt/mux/v0`** — has a dual API (`HandlerFunc` non-rlm,
+  `HandlerFuncRlm` rlm-aware) for v2's identity-threading. Migrating
+  would drop the rlm-aware variant. Used by gov/dao/v3 which threads
+  rlm deep through render handlers; rlm-threading must collapse
+  alongside the mux migration. → mux + gov/dao should be a single
+  follow-up PR.
+
+- **`/p/moul/authz`** — `Authorizer.Transfer` and `DoByPrevious` use
+  `rlm.Previous().Address()` as the principal. In test setups with
+  `cross2(cur)` wrapping, `rlm.Previous()` resolves to the test runner's
+  realm, not to the test's nominal caller. The v3a equivalent
+  (`runtime.Caller().Address()`) walks differently under those wrappers,
+  causing test-time mismatches. Either the test setup conventions
+  need to change in lockstep with the migration, or the migration
+  needs explicit `runtime.CallerN(2)` semantics (which Phase A.1
+  hasn't implemented). → authz migration deferred until test-
+  harness conventions and `CallerN` are settled.
+
+These three represent the remaining substantive Phase B work and
+should land as 2–3 follow-up PRs after this stack merges.
+
 ## Open issues surfaced by this work
 
 1. **Testing-harness gap for v3a unit tests** — RESOLVED.
