@@ -49,6 +49,21 @@ func Origin() Realm {
 	return Realm{addr: address(originCaller()), pkgPath: ""}
 }
 
+// CallerN returns the realm n cross-realm transitions up the stack.
+// CallerN(1) is equivalent to Caller(); CallerN(2) is "the realm that
+// crossed into my caller's realm" — useful for ACL helpers that need
+// to identify the principal two transitions up (e.g., the v2 pattern
+// `rlm.Previous().Previous().Address()`).
+//
+// n=0 is equivalent to Self() (current realm). For n greater than the
+// number of available transitions, behavior depends on the underlying
+// getRealm walk — typically returns the EOA via OriginCaller for
+// n = transitions+1, then panics for n beyond that.
+func CallerN(n int) Realm {
+	addr, path := getRealm(n)
+	return Realm{address(addr), path}
+}
+
 // GetSessionInfo returns session metadata if the current transaction was
 // signed by a session key. Returns isSession=false for master-key transactions.
 //
