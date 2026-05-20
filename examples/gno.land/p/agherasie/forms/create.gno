@@ -1,6 +1,7 @@
 package forms
 
 import (
+	"chain/runtime"
 	"time"
 
 	"gno.land/p/onbloc/json"
@@ -16,14 +17,10 @@ func CreateField(label string, fieldType string, required bool) Field {
 	}
 }
 
-// CreateForm creates a new form. rlm must be the caller's own captured
-// cur (asserted via rlm.IsCurrent()); the form Owner is set to
-// rlm.Previous().Address() — unforgeable, vs. the prior runtime walk
-// which a non-crossing wrapper could spoof.
-func (db *FormDB) CreateForm(_ int, rlm realm, title string, description string, openAt string, closeAt string, data string) (string, error) {
-	if !rlm.IsCurrent() {
-		return "", errSpoofedRealm
-	}
+// CreateForm creates a new form. The form Owner is set to
+// runtime.Caller().Address() — sourced from a VM machine op, not a
+// passed-in realm value (omarsy-free).
+func (db *FormDB) CreateForm(title string, description string, openAt string, closeAt string, data string) (string, error) {
 	// Parsing the dates
 	var parsedOpenTime, parsedCloseTime time.Time
 
@@ -69,7 +66,7 @@ func (db *FormDB) CreateForm(_ int, rlm realm, title string, description string,
 	// Creating the form
 	form := Form{
 		ID:          id,
-		Owner:       rlm.Previous().Address(),
+		Owner:       runtime.Caller().Address(),
 		Title:       title,
 		Description: description,
 		CreatedAt:   time.Now(),

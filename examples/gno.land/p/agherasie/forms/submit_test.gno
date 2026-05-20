@@ -43,13 +43,13 @@ func TestAnswerForm(cur realm, t *testing.T) {
 	var formID string
 	var err error
 	func(cur realm) {
-		formID, err = db.CreateForm(0, cur, "Test Form", "Test Description", "", "", data)
+		formID, err = db.CreateForm("Test Form", "Test Description", "", "", data)
 	}(cross2(cur))
 	if err != nil {
 		t.Error(err)
 	}
 	answers := `["Alex", 21, true, 0, [0, 1]]`
-	func(cur realm) { db.SubmitForm(0, cur, formID, answers) }(cross2(cur))
+	db.SubmitForm(formID, answers)
 
 	urequire.True(t, len(db.Answers) == 1, "Expected 1 answer, got", string(len(db.Answers)))
 	urequire.True(t, db.Answers[0].FormID == formID, "Expected form ID", formID, "got", db.Answers[0].FormID)
@@ -74,39 +74,39 @@ func TestAnswerFormDates(cur realm, t *testing.T) {
 	]`
 	answers := `["Test"]`
 
-	urequire.AbortsWithMessage(t, cur, "Form is closed", func() {
+	urequire.PanicsWithMessage(t, cur, "Form is closed", func() {
 		var formID string
 		var err error
 		func(cur realm) {
-			formID, err = db.CreateForm(0, cur, "Test Form", "Test Description", tomorrow, "", data)
+			formID, err = db.CreateForm("Test Form", "Test Description", tomorrow, "", data)
 		}(cross2(cur))
 		if err != nil {
 			t.Error(err)
 		}
-		func(cur realm) { db.SubmitForm(0, cur, formID, answers) }(cross2(cur))
+		db.SubmitForm(formID, answers)
 	})
 
-	urequire.AbortsWithMessage(t, cur, "Form is closed", func() {
+	urequire.PanicsWithMessage(t, cur, "Form is closed", func() {
 		var formID string
 		var err error
 		func(cur realm) {
-			formID, err = db.CreateForm(0, cur, "Test Form", "Test Description", "", yesterday, data)
+			formID, err = db.CreateForm("Test Form", "Test Description", "", yesterday, data)
 		}(cross2(cur))
 		if err != nil {
 			t.Error(err)
 		}
-		func(cur realm) { db.SubmitForm(0, cur, formID, answers) }(cross2(cur))
+		db.SubmitForm(formID, answers)
 	})
 
-	urequire.NotAborts(t, cur, func() {
+	urequire.NotPanics(t, cur, func() {
 		var formID string
 		var err error
 		func(cur realm) {
-			formID, err = db.CreateForm(0, cur, "Test Form", "Test Description", yesterday, tomorrow, data)
+			formID, err = db.CreateForm("Test Form", "Test Description", yesterday, tomorrow, data)
 		}(cross2(cur))
 		if err != nil {
 			panic(err)
 		}
-		func(cur realm) { db.SubmitForm(0, cur, formID, answers) }(cross2(cur))
+		db.SubmitForm(formID, answers)
 	})
 }

@@ -1,24 +1,21 @@
 package forms
 
 import (
+	"chain/runtime"
 	"time"
 )
 
-// SubmitForm records an answer to a form. rlm must be the caller's own
-// captured cur; the Author is set to rlm.Previous().Address() —
-// unforgeable, vs. the prior runtime walk a non-crossing wrapper could
-// spoof.
-func (db *FormDB) SubmitForm(_ int, rlm realm, formID string, answers string) {
+// SubmitForm records an answer to a form. The Author is set to
+// runtime.Caller().Address() — sourced from a VM machine op
+// (omarsy-free).
+func (db *FormDB) SubmitForm(formID string, answers string) {
 	// Check if form exists
 	form, err := db.GetForm(formID)
 	if err != nil {
 		panic(err)
 	}
 
-	if !rlm.IsCurrent() {
-		panic(errSpoofedRealm)
-	}
-	author := rlm.Previous().Address()
+	author := runtime.Caller().Address()
 
 	// Check if form was already submitted by this user
 	previousAnswer, _ := db.GetAnswer(formID, author)

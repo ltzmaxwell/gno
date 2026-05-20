@@ -12,5 +12,4 @@ var (
 	errAlreadySubmitted = errors.New("You already submitted this form")
 	errFormClosed       = errors.New("Form is closed")
 	errInvalidAnswers   = errors.New("Invalid answers")
-	errSpoofedRealm     = errors.New("rlm does not match the current crossing frame")
 )
