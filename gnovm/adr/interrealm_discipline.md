@@ -217,6 +217,37 @@ and against these examples.
 
 See `interrealm_capability_levels.md` for the full design space.
 
+## `revive()` vs `defer recover()` after migration
+
+When migrating a `/p/` helper from the v2 `(_ int, rlm realm, ...)` shape
+to a v3a plain signature, callers may also need to switch how they
+catch panics from that helper.
+
+- **`revive(fn)`** catches **cross-realm aborts** (a runtime event:
+  panic crossing a frozen-Realm or /r/-to-/r/ boundary). Tied to the
+  VM-level transition, not source syntax. Persists into Phase C
+  unchanged.
+- **`defer recover()`** catches **same-realm panics** (normal Go
+  semantics, no realm transition involved).
+
+After v3a migration:
+- A `/p/` method called *directly* from another /p/ frame (no realm
+  transition) → use `defer recover()`. The v2-era `revive()` no longer
+  applies.
+- A `/p/` method called *across a realm boundary* (e.g., the test
+  harness's `cross()` wrapping still in place, or invocation from a
+  different /r/) → keep `revive()`.
+
+Concrete instance in this PR: `/p/agherasie/forms.SubmitForm` was
+called via `cross2(cur)` wrapper in v2 (cross-realm abort path,
+caught by `revive`). After migration, the test calls SubmitForm
+directly (same /p/ frame), so the panic is regular and `defer recover()`
+is appropriate. The wrapper was dropped; `revive()` was replaced.
+
+Dropping the `cross` keyword in Phase C does **not** affect `revive()`
+— `revive` operates on VM-level events (frame's `IsRevive` flag,
+unwind on cross-realm panic), which persist regardless of source syntax.
+
 ## Where to enforce
 
 | Layer | Mechanism |
