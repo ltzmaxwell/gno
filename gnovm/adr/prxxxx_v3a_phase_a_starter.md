@@ -129,24 +129,41 @@ v3a (designed in `gnovm/adr/interrealm_v3a.md`) addresses both via:
 | `/p/demo/microblog` | v2 shape | v3a runtime.Caller |
 | `/p/demo/subscription/{lifetime,recurring}` | v2 shape | v3a runtime.Caller |
 
-## What is intentionally deferred
+## Phase A.2/A.3 — substantive work already in v2 substrate
 
-Per `gnovm/adr/interrealm_v3a.md`, Phase A includes additional work
-not in this stack:
+Investigation during this work revealed that the "generalized indirect
+dispatch borrow" and "OriginRealm field" the v3a ADR specified are
+**already provided by v2's existing layered borrow** in `PushFrameCall`
+(machine.go:2306–2365):
 
-- **`OriginRealm` field on `FuncValue`/`BoundMethodValue`** with
-  generalized indirect-dispatch borrow (function values, interface
-  methods, function fields).
-  - Why deferred: this is a runtime behavior change for indirect
-    dispatch that could affect existing /p/ helpers relying on
-    caller-authority semantics for callbacks. Needs careful test
-    coverage before landing.
+- **`FuncValue.PkgPath`** = declaring package of the function/closure,
+  set at construction. Functions as the canonical OriginRealm for
+  direct callables.
+- **`FuncValue.ObjectInfo.ID.PkgID`** = allocation-time realm stamp,
+  set via the allocator. Used for closure-identity preservation
+  across copies.
+- **Layer-1 borrow** fires for any /r/-declared callable (top-level
+  function, method, closure) regardless of how it's dispatched
+  (direct, function value, interface method). v3a's "indirect dispatch
+  must borrow to OriginRealm" guarantee is already enforced for
+  /r/-declared callables.
+- **Layer-2 borrow** fires for stdlib/p/ methods on object receivers
+  with foreign PkgID.
+- **Generalized anchor** (this PR, commit 2e5a01ec3) closes the
+  primitive/nil-receiver gap.
+
+`zrealm_v3a_indirect_dispatch_filetest.gno` (commit 515a38dd3) verifies
+the invariant directly: identity queries (`runtime.Caller()`) resolve to
+the same answer whether the helper is invoked directly or through a
+function-value indirection.
+
+What's left for a future PR (not blocking v3a Phase A):
+
 - **Call-form analyzer at preprocess**: classify each `CallExpr` as
-  direct or indirect; emit the appropriate dispatch op.
-  - Why deferred: precise classification has edge cases (parenthesized
-    identifiers, embedded-method promoted access, generic
-    instantiation). Needs explicit spec mirroring Go's
-    method-value/method-expression semantics.
+  direct or indirect for tooling/audit purposes. Not load-bearing for
+  safety — the existing layered-borrow runtime dispatch already
+  produces correct behavior for both forms. Useful for static
+  analysis tools, lint rules, and IDE highlights.
 
 Phases B (broad migration) and C (surface removal of `cross`/`cur`/`rlm`)
 are entirely follow-on PRs.
