@@ -128,6 +128,10 @@ v3a (designed in `gnovm/adr/interrealm_v3a.md`) addresses both via:
 | `/p/n2p5/loci` | v2 `(_ int, rlm, ...)` shape | v3a runtime.Caller |
 | `/p/demo/microblog` | v2 shape | v3a runtime.Caller |
 | `/p/demo/subscription/{lifetime,recurring}` | v2 shape | v3a runtime.Caller |
+| `/p/oxtekgrinder/ownable2step` | v2 shape | v3a runtime.Caller |
+| `/p/n2p5/mgroup` | v2 shape | v3a runtime.Caller |
+| `/p/nt/pausable/v0` | v2 shape | v3a runtime.Caller |
+| `/p/agherasie/forms` | v2 shape | v3a runtime.Caller |
 
 ## Phase A.2/A.3 — substantive work already in v2 substrate
 
