@@ -111,15 +111,15 @@ func ExecSwitch(cur realm, fn func()) {
 }
 
 func IsCallerSubPath(cur realm) bool {
-	return nestedpkg.IsCallerSubPath(0, cur)
+	return nestedpkg.IsCallerSubPath()
 }
 
 func IsCallerParentPath(cur realm) bool {
-	return nestedpkg.IsCallerParentPath(0, cur)
+	return nestedpkg.IsCallerParentPath()
 }
 
 func HasCallerSameNamespace(cur realm) bool {
-	return nestedpkg.IsSameNamespace(0, cur)
+	return nestedpkg.IsSameNamespace()
 }
 
 func BankerOriginSend(cur realm) string {

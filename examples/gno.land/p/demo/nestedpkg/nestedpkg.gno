@@ -1,37 +1,32 @@
 // Package nestedpkg provides helpers for package-path based access control.
 // It is useful for upgrade patterns relying on namespaces.
 //
-// SECURITY: every exported helper takes `rlm realm` and reads both
-// `rlm.PkgPath()` and `rlm.Previous().PkgPath()` to make an
-// authorization decision. To close Class-2 designation forgery (a
-// hostile realm stashes a captured realm value and passes it back to
-// spoof identity), every helper gates on `rlm.IsCurrent()` first. The
-// Is* predicates return false on stale rlm (fail-closed); the Assert*
-// helpers panic. See docs/resources/gno-security.md.
+// SECURITY: every exported helper reads both runtime.Self().PkgPath()
+// (current realm's path) and runtime.Caller().PkgPath() (calling realm's
+// path) to make an authorization decision. Identity is sourced from VM
+// machine ops, not a passed-in `realm` value — no forgery surface
+// (omarsy-free).
 package nestedpkg
 
-import "strings"
+import (
+	"chain/runtime"
+	"strings"
+)
 
 // IsCallerSubPath checks if the caller realm is located in a subfolder of the current realm.
-func IsCallerSubPath(_ int, rlm realm) bool {
-	if !rlm.IsCurrent() {
-		return false
-	}
+func IsCallerSubPath() bool {
 	var (
-		curPath  = rlm.PkgPath() + "/"
-		prevPath = rlm.Previous().PkgPath() + "/"
+		curPath  = runtime.Self().PkgPath() + "/"
+		prevPath = runtime.Caller().PkgPath() + "/"
 	)
 	return strings.HasPrefix(prevPath, curPath)
 }
 
 // AssertCallerIsSubPath panics if IsCallerSubPath returns false.
-func AssertCallerIsSubPath(_ int, rlm realm) {
-	if !rlm.IsCurrent() {
-		panic("unauthorized: rlm is not the caller's live cur")
-	}
+func AssertCallerIsSubPath() {
 	var (
-		curPath  = rlm.PkgPath() + "/"
-		prevPath = rlm.Previous().PkgPath() + "/"
+		curPath  = runtime.Self().PkgPath() + "/"
+		prevPath = runtime.Caller().PkgPath() + "/"
 	)
 	if !strings.HasPrefix(prevPath, curPath) {
 		panic("call restricted to nested packages. current realm is " + curPath + ", previous realm is " + prevPath)
@@ -39,25 +34,19 @@ func AssertCallerIsSubPath(_ int, rlm realm) {
 }
 
 // IsCallerParentPath checks if the caller realm is located in a parent location of the current realm.
-func IsCallerParentPath(_ int, rlm realm) bool {
-	if !rlm.IsCurrent() {
-		return false
-	}
+func IsCallerParentPath() bool {
 	var (
-		curPath  = rlm.PkgPath() + "/"
-		prevPath = rlm.Previous().PkgPath() + "/"
+		curPath  = runtime.Self().PkgPath() + "/"
+		prevPath = runtime.Caller().PkgPath() + "/"
 	)
 	return strings.HasPrefix(curPath, prevPath)
 }
 
 // AssertCallerIsParentPath panics if IsCallerParentPath returns false.
-func AssertCallerIsParentPath(_ int, rlm realm) {
-	if !rlm.IsCurrent() {
-		panic("unauthorized: rlm is not the caller's live cur")
-	}
+func AssertCallerIsParentPath() {
 	var (
-		curPath  = rlm.PkgPath() + "/"
-		prevPath = rlm.Previous().PkgPath() + "/"
+		curPath  = runtime.Self().PkgPath() + "/"
+		prevPath = runtime.Caller().PkgPath() + "/"
 	)
 	if !strings.HasPrefix(curPath, prevPath) {
 		panic("call restricted to parent packages. current realm is " + curPath + ", previous realm is " + prevPath)
@@ -65,25 +54,19 @@ func AssertCallerIsParentPath(_ int, rlm realm) {
 }
 
 // IsSameNamespace checks if the caller realm and the current realm are in the same namespace.
-func IsSameNamespace(_ int, rlm realm) bool {
-	if !rlm.IsCurrent() {
-		return false
-	}
+func IsSameNamespace() bool {
 	var (
-		curNs  = nsFromPath(rlm.PkgPath()) + "/"
-		prevNs = nsFromPath(rlm.Previous().PkgPath()) + "/"
+		curNs  = nsFromPath(runtime.Self().PkgPath()) + "/"
+		prevNs = nsFromPath(runtime.Caller().PkgPath()) + "/"
 	)
 	return curNs == prevNs
 }
 
 // AssertIsSameNamespace panics if IsSameNamespace returns false.
-func AssertIsSameNamespace(_ int, rlm realm) {
-	if !rlm.IsCurrent() {
-		panic("unauthorized: rlm is not the caller's live cur")
-	}
+func AssertIsSameNamespace() {
 	var (
-		curNs  = nsFromPath(rlm.PkgPath()) + "/"
-		prevNs = nsFromPath(rlm.Previous().PkgPath()) + "/"
+		curNs  = nsFromPath(runtime.Self().PkgPath()) + "/"
+		prevNs = nsFromPath(runtime.Caller().PkgPath()) + "/"
 	)
 	if curNs != prevNs {
 		panic("call restricted to packages from the same namespace. current realm is " + curNs + ", previous realm is " + prevNs)
