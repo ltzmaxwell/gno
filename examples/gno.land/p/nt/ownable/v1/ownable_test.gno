@@ -5,6 +5,7 @@ import (
 
 	"gno.land/p/nt/testutils/v0"
 	"gno.land/p/nt/uassert/v0"
+	"gno.land/p/nt/urequire/v0"
 )
 
 var (
@@ -12,18 +13,9 @@ var (
 	bob   = testutils.TestAddress("bob")
 )
 
-// Unit tests cover the pure-data API surface (no caller-identity
-// resolution). End-to-end behavior of TransferOwnership / DropOwnership
-// under realistic call chains is verified by the filetest
-// gnovm/tests/files/zrealm_v3a_canary_filetest.gno, which exercises
-// the v3a-style canary realm /r/tests/vm/v3acanary.
-//
-// We don't write unit tests for the mutating methods here because the
-// v2-style testing harness (testing.SetRealm + cross2(cur) wrappers) is
-// exactly the ceremony v1 is designed to avoid. A v3a-aligned testing
-// harness with a "push synthetic caller frame" primitive would let
-// these tests be expressed naturally; for now, filetests carry the
-// load for realm-aware scenarios.
+// Tests use plain testing.SetRealm without cross() scaffolding —
+// the v3a-aligned override walk handles the user-realm override
+// frame as the EOA boundary so runtime.Caller() resolves correctly.
 
 func TestNewWithAddress(cur realm, t *testing.T) {
 	o := NewWithAddress(alice)
@@ -64,4 +56,41 @@ func TestAssertOwnedBy(cur realm, t *testing.T) {
 func TestOwnerNilReceiver(cur realm, t *testing.T) {
 	var o *Ownable
 	uassert.Equal(t, o.Owner(), address(""))
+}
+
+func TestTransferOwnership(cur realm, t *testing.T) {
+	o := NewWithAddress(alice)
+
+	testing.SetRealm(testing.NewUserRealm(alice))
+	urequire.NoError(t, o.TransferOwnership(bob))
+	uassert.Equal(t, o.Owner(), bob)
+}
+
+func TestTransferOwnershipUnauthorized(cur realm, t *testing.T) {
+	o := NewWithAddress(alice)
+
+	testing.SetRealm(testing.NewUserRealm(bob))
+	uassert.ErrorContains(t, o.TransferOwnership(bob), ErrUnauthorized.Error())
+}
+
+func TestTransferOwnershipInvalidAddress(cur realm, t *testing.T) {
+	o := NewWithAddress(alice)
+
+	testing.SetRealm(testing.NewUserRealm(alice))
+	uassert.ErrorContains(t, o.TransferOwnership(""), ErrInvalidAddress.Error())
+}
+
+func TestDropOwnership(cur realm, t *testing.T) {
+	o := NewWithAddress(alice)
+
+	testing.SetRealm(testing.NewUserRealm(alice))
+	urequire.NoError(t, o.DropOwnership())
+	uassert.Empty(t, string(o.Owner()), "owner should be empty after drop")
+}
+
+func TestDropOwnershipUnauthorized(cur realm, t *testing.T) {
+	o := NewWithAddress(alice)
+
+	testing.SetRealm(testing.NewUserRealm(bob))
+	uassert.ErrorContains(t, o.DropOwnership(), ErrUnauthorized.Error())
 }
