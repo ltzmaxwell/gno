@@ -2,6 +2,7 @@ package lifetime
 
 import (
 	"chain"
+	"chain/runtime"
 
 	"gno.land/p/jaekwon/allowancesender/v0"
 	"gno.land/p/nt/avl/v0"
@@ -57,13 +58,9 @@ func (ls *LifetimeSubscription) HasValidSubscription(subscriber address) error {
 }
 
 // UpdateAmount lets the subscription owner change the one-time amount.
-// rlm must be the caller's own captured cur; rlm.Previous().Address()
-// must equal the owner.
-func (ls *LifetimeSubscription) UpdateAmount(_ int, rlm realm, newAmount int64) error {
-	if !rlm.IsCurrent() {
-		return ErrNotAuthorized
-	}
-	if !ls.OwnedBy(rlm.Previous().Address()) {
+// Authorization: runtime.Caller().Address() must equal the owner.
+func (ls *LifetimeSubscription) UpdateAmount(newAmount int64) error {
+	if !ls.OwnedBy(runtime.Caller().Address()) {
 		return ErrNotAuthorized
 	}
 	ls.amount = newAmount
