@@ -1,9 +1,8 @@
-# PR — interrealm v3a Phase A starter (stacked on PR #5669)
+# PR — interrealm v3a Phase A starter + Phase B migrations (stacked on PR #5669)
 
-Six commits stacked on top of `pr-5669` (v2's Phase 3 PR) that begin
-v3a's Phase A: introduce the machine-op identity model, close the
-same-pkg variant of Attack H, and demonstrate the pattern at three
-layers (VM defense, library API, realm canary).
+Stacked commits on top of `pr-5669` (v2's Phase 3 PR) that begin v3a's
+Phase A (machine-op identity model, generalized anchor, reference
+implementations) and Phase B (real /p/ library migrations).
 
 This ADR ties the commits together and documents what's intentionally
 deferred. It satisfies AGENTS.md's "every non-trivial AI-assisted PR
@@ -93,6 +92,29 @@ v3a (designed in `gnovm/adr/interrealm_v3a.md`) addresses both via:
      the canary filetest (see "Open issues" below).
    - `doc.gno` documents v1 vs v0 trade-offs.
 
+7. **`042a7af99` docs(interrealm): PR-level ADR for v3a Phase A starter stack**
+   - This document (initial version).
+
+8. **`7496f4897` refactor(loci): migrate to v3a runtime.Caller pattern (Phase B)**
+   - In-place migration of `/p/n2p5/loci.Set` from
+     `(_ int, rlm realm, value)` shape to plain `(value)` signature
+     using `runtime.Caller().Address()`.
+   - Updates `/r/n2p5/loci` caller and the package's own test/filetest.
+   - First real Phase B migration — demonstrates the playbook on a
+     small self-contained library.
+
+9. **`9e18dd151` refactor(microblog): migrate to v3a runtime.Caller pattern (Phase B)**
+   - `/p/demo/microblog.NewPost` migrated to plain signature using
+     `runtime.Caller().Address()` for author identity.
+   - `/r/demo/microblog` caller updated.
+   - Test uses `cross()` scaffolding (documented as transitional).
+
+10. **`e524c2a61` refactor(subscription): migrate lifetime+recurring UpdateAmount to runtime.Caller**
+    - `/p/demo/subscription/lifetime.UpdateAmount` and
+      `/p/demo/subscription/recurring.UpdateAmount` both migrated.
+    - Now satisfy the existing `Subscription` interface (which already
+      had the v3a-style signature).
+
 ## What this delivers
 
 | Property | Before | After |
@@ -103,6 +125,9 @@ v3a (designed in `gnovm/adr/interrealm_v3a.md`) addresses both via:
 | Identity query in /p/ helpers | requires `rlm realm` parameter (forgeable) | machine op (`runtime.Caller()`) |
 | /p/ library with omarsy-free ACL | not available | `/p/nt/ownable/v1` reference impl |
 | Realm-level reference impl | not in tree | `/r/tests/vm/v3acanary` reference |
+| `/p/n2p5/loci` | v2 `(_ int, rlm, ...)` shape | v3a runtime.Caller |
+| `/p/demo/microblog` | v2 shape | v3a runtime.Caller |
+| `/p/demo/subscription/{lifetime,recurring}` | v2 shape | v3a runtime.Caller |
 
 ## What is intentionally deferred
 
