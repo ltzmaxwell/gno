@@ -106,9 +106,7 @@ func TestUpdateAmount_OwnerSucceeds(cur realm, t *testing.T) {
 	rs := NewRecurringSubscription(alice, time.Hour, 1000, payee)
 
 	testing.SetRealm(testing.NewUserRealm(alice))
-	var err error
-	func(cur realm) { err = rs.UpdateAmount(2000) }(cross)
-	uassert.NoError(t, err)
+	uassert.NoError(t, rs.UpdateAmount(2000))
 	uassert.Equal(t, int64(2000), rs.GetAmount())
 }
 
@@ -116,9 +114,7 @@ func TestUpdateAmount_NonOwnerFails(cur realm, t *testing.T) {
 	rs := NewRecurringSubscription(alice, time.Hour, 1000, payee)
 
 	testing.SetRealm(testing.NewUserRealm(bob))
-	var err error
-	func(cur realm) { err = rs.UpdateAmount(3000) }(cross)
-	uassert.ErrorIs(t, err, ErrNotAuthorized)
+	uassert.ErrorIs(t, rs.UpdateAmount(3000), ErrNotAuthorized)
 }
 
 func TestGetAmount(cur realm, t *testing.T) {

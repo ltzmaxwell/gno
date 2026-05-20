@@ -25,7 +25,7 @@ func TestInitiateTransferOwnership(cur realm, t *testing.T) {
 
 	testing.SetRealm(testing.NewUserRealm(alice))
 	var err error
-	func(cur realm) { err = o.TransferOwnership(bob) }(cross)
+	err = o.TransferOwnership(bob)
 	urequire.NoError(t, err)
 
 	uassert.Equal(t, o.Owner(), alice)
@@ -37,14 +37,14 @@ func TestTransferOwnership(cur realm, t *testing.T) {
 
 	testing.SetRealm(testing.NewUserRealm(alice))
 	var err error
-	func(cur realm) { err = o.TransferOwnership(bob) }(cross)
+	err = o.TransferOwnership(bob)
 	urequire.NoError(t, err)
 
 	uassert.Equal(t, o.Owner(), alice)
 	uassert.Equal(t, o.PendingOwner(), bob)
 
 	testing.SetRealm(testing.NewUserRealm(bob))
-	func(cur realm) { err = o.AcceptOwnership() }(cross)
+	err = o.AcceptOwnership()
 	urequire.NoError(t, err)
 
 	uassert.Equal(t, o.Owner(), bob)
@@ -62,7 +62,7 @@ func TestDropOwnership(cur realm, t *testing.T) {
 
 	testing.SetRealm(testing.NewUserRealm(alice))
 	var err error
-	func(cur realm) { err = o.DropOwnership() }(cross)
+	err = o.DropOwnership()
 	urequire.NoError(t, err, "DropOwnership failed")
 
 	uassert.Empty(t, o.Owner(), "owner should be empty")
@@ -74,11 +74,11 @@ func TestDropOwnershipVulnerability(cur realm, t *testing.T) {
 	testing.SetRealm(testing.NewUserRealm(alice))
 	var err error
 	// alice initiates ownership transfer to bob
-	func(cur realm) { err = o.TransferOwnership(bob) }(cross)
+	err = o.TransferOwnership(bob)
 	urequire.NoError(t, err)
 
 	// alice drops ownership while ownership transfer is pending
-	func(cur realm) { err = o.DropOwnership() }(cross)
+	err = o.DropOwnership()
 	urequire.NoError(t, err)
 
 	uassert.Empty(t, o.Owner(), "owner should be empty")
@@ -86,7 +86,7 @@ func TestDropOwnershipVulnerability(cur realm, t *testing.T) {
 
 	// verify bob can no longer claim ownership
 	testing.SetRealm(testing.NewUserRealm(bob))
-	func(cur realm) { err = o.AcceptOwnership() }(cross)
+	err = o.AcceptOwnership()
 	uassert.ErrorContains(t, err, ErrNoPendingOwner.Error())
 }
 
@@ -97,9 +97,9 @@ func TestErrUnauthorized(cur realm, t *testing.T) {
 
 	testing.SetRealm(testing.NewUserRealm(bob))
 	var err error
-	func(cur realm) { err = o.TransferOwnership(alice) }(cross)
+	err = o.TransferOwnership(alice)
 	uassert.ErrorContains(t, err, ErrUnauthorized.Error())
-	func(cur realm) { err = o.DropOwnership() }(cross)
+	err = o.DropOwnership()
 	uassert.ErrorContains(t, err, ErrUnauthorized.Error())
 }
 
@@ -108,7 +108,7 @@ func TestErrInvalidAddress(cur realm, t *testing.T) {
 
 	testing.SetRealm(testing.NewUserRealm(alice))
 	var err error
-	func(cur realm) { err = o.TransferOwnership("") }(cross)
+	err = o.TransferOwnership("")
 	uassert.ErrorContains(t, err, ErrInvalidAddress.Error())
 
 	func(cur realm) {
@@ -122,7 +122,7 @@ func TestErrNoPendingOwner(cur realm, t *testing.T) {
 
 	testing.SetRealm(testing.NewUserRealm(alice))
 	var err error
-	func(cur realm) { err = o.AcceptOwnership() }(cross)
+	err = o.AcceptOwnership()
 	uassert.ErrorContains(t, err, ErrNoPendingOwner.Error())
 }
 
@@ -131,10 +131,10 @@ func TestErrPendingUnauthorized(cur realm, t *testing.T) {
 
 	testing.SetRealm(testing.NewUserRealm(alice))
 	var err error
-	func(cur realm) { err = o.TransferOwnership(bob) }(cross)
+	err = o.TransferOwnership(bob)
 	urequire.NoError(t, err)
 
 	// alice (still the owner, NOT the pending) tries to AcceptOwnership.
-	func(cur realm) { err = o.AcceptOwnership() }(cross)
+	err = o.AcceptOwnership()
 	uassert.ErrorContains(t, err, ErrPendingUnauthorized.Error())
 }

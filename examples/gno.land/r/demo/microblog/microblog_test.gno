@@ -10,13 +10,7 @@ import (
 
 func postAs(actor address, text string) error {
 	testing.SetRealm(testing.NewUserRealm(actor))
-	var err error
-	// cross() wrapping is testing-harness scaffolding so runtime.Caller()
-	// inside m.NewPost has a crossing frame to walk back to. Awaits a
-	// testing.WithCallerRealm primitive that would let this be written
-	// as a plain call.
-	func(cur realm) { err = m.NewPost(text) }(cross)
-	return err
+	return m.NewPost(text)
 }
 
 func TestMicroblog(t *testing.T) {

@@ -67,11 +67,7 @@ func TestUpdateAmount_OwnerSucceeds(cur realm, t *testing.T) {
 	ls := NewLifetimeSubscription(alice, 1000, payee)
 
 	testing.SetRealm(testing.NewUserRealm(alice))
-	var err error
-	// cross() scaffolding: manufactures a crossing frame so
-	// runtime.Caller() inside UpdateAmount resolves to alice.
-	func(cur realm) { err = ls.UpdateAmount(2000) }(cross)
-	uassert.NoError(t, err)
+	uassert.NoError(t, ls.UpdateAmount(2000))
 	uassert.Equal(t, int64(2000), ls.GetAmount())
 }
 
@@ -79,9 +75,7 @@ func TestUpdateAmount_NonOwnerFails(cur realm, t *testing.T) {
 	ls := NewLifetimeSubscription(alice, 1000, payee)
 
 	testing.SetRealm(testing.NewUserRealm(bob))
-	var err error
-	func(cur realm) { err = ls.UpdateAmount(3000) }(cross)
-	uassert.ErrorIs(t, err, ErrNotAuthorized)
+	uassert.ErrorIs(t, ls.UpdateAmount(3000), ErrNotAuthorized)
 }
 
 func TestGetPayee(cur realm, t *testing.T) {
