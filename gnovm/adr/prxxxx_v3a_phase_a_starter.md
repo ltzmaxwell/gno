@@ -160,11 +160,17 @@ are entirely follow-on PRs.
    directly under `testing.SetRealm` panics with "frame not found:
    cannot seek beyond origin caller override". Affected: `ownable/v1`'s
    mutating-method unit tests (omitted in this PR, covered by canary
-   filetest instead).
+   filetest instead). Phase-B migrated tests work around this by
+   keeping `func(cur realm){...}(cross)` scaffolding inside test
+   bodies.
 
-   Possible fix: add `testing.SetCallerRealm(rlm)` (or equivalent)
-   that pushes a synthetic crossing frame so `runtime.Caller()` from
-   directly-called helpers resolves to `rlm`. Deferred to a follow-up.
+   Investigated implementing `testing.WithCallerRealm(rlm, fn func())`
+   in pure Gno; rejected because the testing stdlib is a non-realm
+   package and the preprocessor forbids crossing function declarations
+   / literals there (`crossing function literal declared in non-realm
+   package`). A clean implementation needs a native binding that
+   pushes a synthetic crossing frame onto `m.Frames` before invoking
+   `fn`. Deferred to a follow-up PR.
 
 2. **Pre-existing test failures on `pr-5669` base**. The PR base has
    several pre-existing test failures (`addressable_1b_err.gno`,
