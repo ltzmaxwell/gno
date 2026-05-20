@@ -5,6 +5,7 @@ package pausable
 
 import (
 	"chain"
+	"chain/runtime"
 	"errors"
 
 	"gno.land/p/nt/ownable/v0"
@@ -31,13 +32,10 @@ func (p Pausable) IsPaused() bool {
 }
 
 // Pause sets the state of Pausable to true, meaning all pausable functions
-// are paused. rlm must be the caller's own captured cur;
-// rlm.Previous().Address() must equal the underlying Ownable's owner.
-func (p *Pausable) Pause(_ int, rlm realm) error {
-	if !rlm.IsCurrent() {
-		return ownable.ErrUnauthorized
-	}
-	if !p.o.OwnedBy(rlm.Previous().Address()) {
+// are paused. Authorization: runtime.Caller().Address() must equal the
+// underlying Ownable's owner.
+func (p *Pausable) Pause() error {
+	if !p.o.OwnedBy(runtime.Caller().Address()) {
 		return ownable.ErrUnauthorized
 	}
 
@@ -48,13 +46,10 @@ func (p *Pausable) Pause(_ int, rlm realm) error {
 }
 
 // Unpause sets the state of Pausable to false, meaning all pausable
-// functions are resumed. rlm must be the caller's own captured cur;
-// rlm.Previous().Address() must equal the underlying Ownable's owner.
-func (p *Pausable) Unpause(_ int, rlm realm) error {
-	if !rlm.IsCurrent() {
-		return ownable.ErrUnauthorized
-	}
-	if !p.o.OwnedBy(rlm.Previous().Address()) {
+// functions are resumed. Authorization: runtime.Caller().Address() must
+// equal the underlying Ownable's owner.
+func (p *Pausable) Unpause() error {
+	if !p.o.OwnedBy(runtime.Caller().Address()) {
 		return ownable.ErrUnauthorized
 	}
 

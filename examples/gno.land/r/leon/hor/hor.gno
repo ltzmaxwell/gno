@@ -158,11 +158,11 @@ func Downvote(cur realm, pkgpath string) {
 }
 
 func Pause(cur realm) error {
-	return Pausable.Pause(0, cur)
+	return Pausable.Pause()
 }
 
 func Unpause(cur realm) error {
-	return Pausable.Unpause(0, cur)
+	return Pausable.Unpause()
 }
 
 func Delete(cur realm, pkgpath string) {
