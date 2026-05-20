@@ -1,6 +1,9 @@
 package ownable2step
 
-import "chain"
+import (
+	"chain"
+	"chain/runtime"
+)
 
 const OwnershipTransferEvent = "OwnershipTransfer"
 
@@ -36,13 +39,10 @@ func NewWithAddress(addr address) *Ownable2Step {
 }
 
 // TransferOwnership initiates the transfer of ownership to newOwner by
-// setting the PendingOwner. rlm must be the caller's own captured cur;
-// rlm.Previous().Address() must equal the current owner.
-func (o *Ownable2Step) TransferOwnership(_ int, rlm realm, newOwner address) error {
-	if !rlm.IsCurrent() {
-		return ErrUnauthorized
-	}
-	if rlm.Previous().Address() != o.owner {
+// setting the PendingOwner. Authorization: runtime.Caller().Address()
+// must equal the current owner.
+func (o *Ownable2Step) TransferOwnership(newOwner address) error {
+	if runtime.Caller().Address() != o.owner {
 		return ErrUnauthorized
 	}
 	if !newOwner.IsValid() {
@@ -52,17 +52,13 @@ func (o *Ownable2Step) TransferOwnership(_ int, rlm realm, newOwner address) err
 	return nil
 }
 
-// AcceptOwnership accepts the pending ownership transfer. rlm must be
-// the caller's own captured cur; rlm.Previous().Address() must equal
-// the pending owner.
-func (o *Ownable2Step) AcceptOwnership(_ int, rlm realm) error {
+// AcceptOwnership accepts the pending ownership transfer.
+// Authorization: runtime.Caller().Address() must equal the pending owner.
+func (o *Ownable2Step) AcceptOwnership() error {
 	if o.pendingOwner.String() == "" {
 		return ErrNoPendingOwner
 	}
-	if !rlm.IsCurrent() {
-		return ErrPendingUnauthorized
-	}
-	if rlm.Previous().Address() != o.pendingOwner {
+	if runtime.Caller().Address() != o.pendingOwner {
 		return ErrPendingUnauthorized
 	}
 	o.owner = o.pendingOwner
@@ -71,13 +67,9 @@ func (o *Ownable2Step) AcceptOwnership(_ int, rlm realm) error {
 }
 
 // DropOwnership removes the owner, disabling any owner-related actions.
-// rlm must be the caller's own captured cur; rlm.Previous().Address()
-// must equal the current owner.
-func (o *Ownable2Step) DropOwnership(_ int, rlm realm) error {
-	if !rlm.IsCurrent() {
-		return ErrUnauthorized
-	}
-	if rlm.Previous().Address() != o.owner {
+// Authorization: runtime.Caller().Address() must equal the current owner.
+func (o *Ownable2Step) DropOwnership() error {
+	if runtime.Caller().Address() != o.owner {
 		return ErrUnauthorized
 	}
 	prevOwner := o.owner
