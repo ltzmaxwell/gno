@@ -1,6 +1,7 @@
 package microblog
 
 import (
+	"chain/runtime"
 	"errors"
 	"sort"
 	"strings"
@@ -46,15 +47,12 @@ func (m *Microblog) GetPages() []*Page {
 	return pages
 }
 
-// NewPost records a new post. rlm must be the caller's own captured
-// cur (asserted via rlm.IsCurrent()); the post's author is set to
-// rlm.Previous().Address() — an external realm cannot forge a post
-// under a different identity.
-func (m *Microblog) NewPost(_ int, rlm realm, text string) error {
-	if !rlm.IsCurrent() {
-		return errors.New("microblog: unauthorized")
-	}
-	author := rlm.Previous().Address()
+// NewPost records a new post. The post's author is set to
+// runtime.Caller().Address() — sourced from a VM machine op, not a
+// passed-in realm value, so the post identity is unforgeable
+// (omarsy-free pattern).
+func (m *Microblog) NewPost(text string) error {
+	author := runtime.Caller().Address()
 	_, found := m.Pages.Get(author.String())
 	if !found {
 		m.Pages.Set(author.String(), &Page{
