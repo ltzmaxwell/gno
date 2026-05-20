@@ -153,24 +153,21 @@ are entirely follow-on PRs.
 
 ## Open issues surfaced by this work
 
-1. **Testing-harness gap for v3a unit tests**. v2's pattern
-   `testing.SetRealm(NewUserRealm(alice)) + func(cur realm){...}(cross2(cur))`
-   manufactures a crossing frame so `cur.Previous()` resolves. v1's
-   `runtime.Caller()` has no crossing frame to walk to; calling it
-   directly under `testing.SetRealm` panics with "frame not found:
-   cannot seek beyond origin caller override". Affected: `ownable/v1`'s
-   mutating-method unit tests (omitted in this PR, covered by canary
-   filetest instead). Phase-B migrated tests work around this by
-   keeping `func(cur realm){...}(cross)` scaffolding inside test
-   bodies.
-
-   Investigated implementing `testing.WithCallerRealm(rlm, fn func())`
-   in pure Gno; rejected because the testing stdlib is a non-realm
-   package and the preprocessor forbids crossing function declarations
-   / literals there (`crossing function literal declared in non-realm
-   package`). A clean implementation needs a native binding that
-   pushes a synthetic crossing frame onto `m.Frames` before invoking
-   `fn`. Deferred to a follow-up PR.
+1. **Testing-harness gap for v3a unit tests** — RESOLVED.
+   v2's test-time `X_getRealm` panicked with "cannot seek beyond
+   origin caller override" when `runtime.Caller()` was invoked from
+   a /p/ helper called directly under `testing.SetRealm(NewUserRealm(...))`.
+   That panic was overly strict for v3a-style tests (no cross()
+   scaffolding above the override).
+   
+   Resolution: dropped the panic in `gnovm/tests/stdlibs/chain/runtime/
+   testing_runtime.go`. When the walk reaches a user-realm override
+   with `crosses < height`, skip the frame and let the switch
+   fallthrough return `ctx.OriginCaller`. This aligns test-time
+   behavior with production `execctx/realm.go` (which doesn't panic).
+   Two existing tests (`zrealm_crossrealm13`, `zrealm_crossrealm13a`)
+   updated to reflect the new output. `ownable/v1` now has full
+   mutating-method unit tests with no `cross()` scaffolding.
 
 2. **Pre-existing test failures on `pr-5669` base**. The PR base has
    several pre-existing test failures (`addressable_1b_err.gno`,
