@@ -101,6 +101,36 @@ master vs node-cache vs opcode. ~10 min.
   honest answer may be "no — drop the optimization entirely." Don't ship op-set
   expansion for a microbench-only win.
 
+### RESOLVED (2026-06-11): measured, node-cache loses; opcode is the only full recovery
+
+Node-cache was prototyped in its best form — an attribute (`ATTR_IFACE_CMP` set
+on bx at eval-push when isInterfaceCmp), not a struct field. Key realization:
+`GetAttribute` is on the Node/Expr interface (nodes.go:219), so doOpEql reads it
+off `m.PopExpr()` WITHOUT the `.(*BinaryExpr)` assertion — the assertion is
+avoidable after all. Struct-field form was dropped: an unexported field doesn't
+survive node persistence and an exported one touches amino; the attr map is the
+idiomatic non-persisted cache (cf. ATTR_TYPEOF_VALUE).
+
+BenchmarkOpEql_Int sec/op(pure), interleaved n=10, Apple M3, bench file verified
+byte-identical across all four refs:
+
+| variant | ns/op(pure) | vs master |
+|---|---|---|
+| master              | 44.34 | baseline |
+| cmp PR (8cd8ec259)  | 54.08 | +22.0% p=0.000 |
+| attr node-cache     | 52.16 | +17.6% p=0.000 |
+| opcode (this branch)| 43.02 | flat p=0.123 |
+
+The attr read (dynamic interface method call + string-keyed map lookup + `!= nil`)
+costs nearly as much as the assertion+isInterfaceCmp it replaces — and the bench
+is its BEST case (bench expr's attr map is nil; real preprocessed nodes have
+populated maps). Total sec/op flat for all variants, as before. Filetests: the
+attr prototype passed all 20 `Files/types/cmp_uncomp*` (then discarded).
+
+**Decision: keep the opcode specialization** (vs drop-entirely: the reviewer
+explicitly flagged the 2.4%, the fix exists, precedent is OpBinary1, and the
+decision is static). Proceed with the TODO list above.
+
 ## Notes
 - Constant `false` arg to `isEql` remains in the common path (cheap). Removing it
   fully would need a separate non-iface `isEql`; almost certainly not worth it.
