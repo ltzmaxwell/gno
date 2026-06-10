@@ -235,6 +235,16 @@ func (m *Machine) doOpEval() {
 			m.PushOp(OpEval)
 		default:
 			op := word2BinaryOp(x.Op)
+			// Specialize ==/!= into interface-boundary variants when an operand
+			// is statically interface-typed, deciding here (x is already typed,
+			// no assertion) so the common path's doOpEql/doOpNeq need not.
+			if (x.Op == EQL || x.Op == NEQ) && isInterfaceCmp(x) {
+				if x.Op == EQL {
+					op = OpEqlIface
+				} else {
+					op = OpNeqIface
+				}
+			}
 			m.PushOp(op)
 			// alt: m.PushOp(OpBinary2)
 			// evaluate right

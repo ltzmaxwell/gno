@@ -75,7 +75,7 @@ func (m *Machine) doOpLand() {
 }
 
 func (m *Machine) doOpEql() {
-	bx := m.PopExpr().(*BinaryExpr)
+	m.PopExpr()
 
 	// get right and left operands.
 	rv := m.PopValue()
@@ -88,14 +88,14 @@ func (m *Machine) doOpEql() {
 		m.incrCPUBigInt(lv, rv, OpCPUSlopeBigIntEql)
 	}
 	// set result in lv.
-	res := isEql(m, lv, rv, isInterfaceCmp(bx))
+	res := isEql(m, lv, rv, false)
 	lv.T = UntypedBoolType
 	lv.V = nil
 	lv.SetBool(res)
 }
 
 func (m *Machine) doOpNeq() {
-	bx := m.PopExpr().(*BinaryExpr)
+	m.PopExpr()
 
 	// get right and left operands.
 	rv := m.PopValue()
@@ -105,15 +105,49 @@ func (m *Machine) doOpNeq() {
 	}
 
 	// set result in lv.
-	res := !isEql(m, lv, rv, isInterfaceCmp(bx))
+	res := !isEql(m, lv, rv, false)
+	lv.T = UntypedBoolType
+	lv.V = nil
+	lv.SetBool(res)
+}
+
+// doOpEqlIface / doOpNeqIface are the interface-boundary variants selected at
+// OpEval (see op_eval.go). viaIface=true makes isEql apply Go's rule that
+// comparing an uncomparable dynamic type panics.
+func (m *Machine) doOpEqlIface() {
+	m.PopExpr()
+
+	rv := m.PopValue()
+	lv := m.PeekValue(1) // also the result
+	if debug {
+		debugAssertEqualityTypes(lv.T, rv.T)
+	}
+	if lv.T != nil && lv.T.Kind() == BigintKind {
+		m.incrCPUBigInt(lv, rv, OpCPUSlopeBigIntEql)
+	}
+	res := isEql(m, lv, rv, true)
+	lv.T = UntypedBoolType
+	lv.V = nil
+	lv.SetBool(res)
+}
+
+func (m *Machine) doOpNeqIface() {
+	m.PopExpr()
+
+	rv := m.PopValue()
+	lv := m.PeekValue(1) // also the result
+	if debug {
+		debugAssertEqualityTypes(lv.T, rv.T)
+	}
+	res := !isEql(m, lv, rv, true)
 	lv.T = UntypedBoolType
 	lv.V = nil
 	lv.SetBool(res)
 }
 
 // isInterfaceCmp reports whether either operand of bx is statically an
-// interface. A true result tells isEql to apply Go's interface-comparison
-// rule, under which isEql panics on an uncomparable dynamic type.
+// interface. A true result selects the OpEqlIface/OpNeqIface variant, under
+// which isEql panics on an uncomparable dynamic type.
 func isInterfaceCmp(bx *BinaryExpr) bool {
 	return hasInterfaceStaticType(bx.Left) || hasInterfaceStaticType(bx.Right)
 }

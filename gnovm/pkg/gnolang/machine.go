@@ -1245,6 +1245,12 @@ const (
 	OpShr   Op = 0x36 // >>
 	OpBand  Op = 0x37 // &
 	OpBandn Op = 0x38 // &^
+	// Interface-comparison variants of ==/!=, selected at OpEval when an
+	// operand is statically interface-typed. They apply Go's uncomparable
+	// -dynamic-type panic rule; the plain OpEql/OpNeq skip that check so the
+	// common (non-interface) comparison path stays branch-free.
+	OpEqlIface Op = 0x39 // == (interface boundary)
+	OpNeqIface Op = 0x3A // != (interface boundary)
 
 	/* Other expression operators */
 	OpEval         Op = 0x40 // eval next expression
@@ -1778,6 +1784,12 @@ func (m *Machine) runOnce() (caught *Exception) {
 		case OpNeq:
 			m.incrCPU(OpCPUNeq)
 			m.doOpNeq()
+		case OpEqlIface:
+			m.incrCPU(OpCPUEql)
+			m.doOpEqlIface()
+		case OpNeqIface:
+			m.incrCPU(OpCPUNeq)
+			m.doOpNeqIface()
 		case OpLss:
 			m.incrCPU(OpCPULss)
 			m.doOpLss()
