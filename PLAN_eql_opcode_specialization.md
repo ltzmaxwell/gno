@@ -62,6 +62,45 @@ on the original machine (regenerate if gone: bench HEAD of cmp branch vs this).
 6. Decide: separate follow-up PR (recommended — it's a perf refinement on top of
    the cmp fix) vs folding into the cmp PR.
 
+## OPEN DESIGN QUESTION — is two new opcodes the right design? (resume here)
+
+Concern: adding `OpEqlIface`/`OpNeqIface` alongside the general `OpEql`/`OpNeq`
+doubles the op surface for `==`/`!=` to win 2.4% on the cheapest op. The variants
+aren't a new *concept*, just a static perf flag promoted to an opcode — a
+special-case smell. Every exhaustive `switch op` (gas tables, stringer, debug,
+replay) must now know 4 ops where 2 suffice.
+
+Counter: opcode specialization is an established LOCAL pattern — `OpBinary1`
+already exists as a separate op for the LAND/LOR short-circuit instead of
+branching inside a general op. And the iface-vs-not split is genuinely static
+(known at preprocess), so encoding it in the instruction is defensible.
+
+### Alternative considered: node-cache instead of new opcodes
+Keep the idiomatic `bx := m.PopExpr().(*BinaryExpr)` assertion (cf. doOpBinary1),
+precompute the iface verdict at preprocess, read it in doOpEql:
+`isEql(m, lv, rv, bx.isIfaceCmp)`. Keeps the op set minimal; data-driven, not
+control-flow-driven.
+
+BUT two doubts, UNMEASURED:
+1. The prototype's -22% likely came from removing the ASSERTION (+ call frames),
+   NOT the lookups — reviewer showed gating the lookups recovered nothing. Node-
+   cache KEEPS the assertion, so it may recover little and stay near the PR's
+   current cost rather than reaching master.
+2. Storage cost can erase the gain:
+   - attribute (map): per-eval `GetAttribute` is a map lookup — same cost class
+     as the `hasInterfaceStaticType` lookups being removed → ~net zero.
+   - struct field on BinaryExpr: avoids the map but touches the AST node layout
+     and its amino (de)serialization — own surface/risk.
+
+### Decision plan (do this before polishing the opcode version)
+Prototype the node-cache variant (struct-field form) and benchstat ALL THREE:
+master vs node-cache vs opcode. ~10 min.
+- If node-cache recovers most of the 22% → prefer it (no op-set bloat).
+- If it stalls at the assertion cost → the real question becomes "is 2.4% on the
+  cheapest op worth ANY of this?" Full-program sec/op was flat (p=0.123), so the
+  honest answer may be "no — drop the optimization entirely." Don't ship op-set
+  expansion for a microbench-only win.
+
 ## Notes
 - Constant `false` arg to `isEql` remains in the common path (cheap). Removing it
   fully would need a separate non-iface `isEql`; almost certainly not worth it.
