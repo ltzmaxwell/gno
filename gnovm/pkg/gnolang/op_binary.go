@@ -113,7 +113,9 @@ func (m *Machine) doOpNeq() {
 
 // doOpEqlIface / doOpNeqIface are the interface-boundary variants selected at
 // OpEval (see op_eval.go). viaIface=true makes isEql apply Go's rule that
-// comparing an uncomparable dynamic type panics.
+// comparing an uncomparable dynamic type panics. Unlike doOpEql there is no
+// bigint gas branch: bigints exist only during preprocess const-eval, where
+// operands are never interface-typed.
 func (m *Machine) doOpEqlIface() {
 	m.PopExpr()
 
@@ -121,9 +123,6 @@ func (m *Machine) doOpEqlIface() {
 	lv := m.PeekValue(1) // also the result
 	if debug {
 		debugAssertEqualityTypes(lv.T, rv.T)
-	}
-	if lv.T != nil && lv.T.Kind() == BigintKind {
-		m.incrCPUBigInt(lv, rv, OpCPUSlopeBigIntEql)
 	}
 	res := isEql(m, lv, rv, true)
 	lv.T = UntypedBoolType

@@ -238,8 +238,8 @@ func (m *Machine) doOpEval() {
 			// Specialize ==/!= into interface-boundary variants when an operand
 			// is statically interface-typed, deciding here (x is already typed,
 			// no assertion) so the common path's doOpEql/doOpNeq need not.
-			if (x.Op == EQL || x.Op == NEQ) && isInterfaceCmp(x) {
-				if x.Op == EQL {
+			if (op == OpEql || op == OpNeq) && isInterfaceCmp(x) {
+				if op == OpEql {
 					op = OpEqlIface
 				} else {
 					op = OpNeqIface

@@ -151,3 +151,47 @@ func TestMachineString(t *testing.T) {
 		})
 	}
 }
+
+// TestOpEvalSelectsIfaceCmpOps asserts that doOpEval routes ==/!= to the
+// OpEqlIface/OpNeqIface variants exactly when an operand is statically
+// interface-typed, and to the plain ops otherwise. The runtime behavior of
+// the variants (uncomparable-dynamic-type panic) is covered by the
+// tests/files/types/cmp_uncomp_* filetests.
+func TestOpEvalSelectsIfaceCmpOps(t *testing.T) {
+	ifaceX := func() Expr {
+		x := Nx("a")
+		x.SetAttribute(ATTR_TYPEOF_VALUE, &InterfaceType{})
+		return x
+	}
+	intX := func() Expr {
+		x := Nx("b")
+		x.SetAttribute(ATTR_TYPEOF_VALUE, IntType)
+		return x
+	}
+	tests := []struct {
+		name        string
+		left, right Expr
+		op          Word
+		want        Op
+	}{
+		{"iface left EQL", ifaceX(), intX(), EQL, OpEqlIface},
+		{"iface right EQL", intX(), ifaceX(), EQL, OpEqlIface},
+		{"iface left NEQ", ifaceX(), intX(), NEQ, OpNeqIface},
+		{"concrete EQL", intX(), intX(), EQL, OpEql},
+		{"concrete NEQ", intX(), intX(), NEQ, OpNeq},
+		{"iface LSS unaffected", ifaceX(), intX(), LSS, OpLss},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := NewMachine("test", nil)
+			defer m.Release()
+			m.PushExpr(&BinaryExpr{Left: tc.left, Op: tc.op, Right: tc.right})
+			base := len(m.Ops)
+			m.doOpEval()
+			// The binary op is pushed first, below the operand OpEvals.
+			if got := m.Ops[base]; got != tc.want {
+				t.Errorf("selected %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
