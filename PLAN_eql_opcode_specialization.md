@@ -1,9 +1,10 @@
 # Plan: opcode specialization for ==/!= interface comparisons
 
-Branch: `perf/maxwell/eql_opcode_specialization`, off
-`fix/maxwell/runtime_cmp_check` @ `8cd8ec259` (NOT master — this builds on the
-cmp PR's `isInterfaceCmp`/`hasInterfaceStaticType`; on master `doOpEql` has no
-interface check at all). Worktree: `../gno-eql-opcode`.
+Branch: `perf/maxwell/eql_opcode_specialization`. Originally off
+`fix/maxwell/runtime_cmp_check` @ `8cd8ec259`; rebased onto master 2026-06-12
+after the cmp PR landed squashed as `5d889b083` (#5713) — the touched files had
+zero drift, so references to `8cd8ec259` below correspond 1:1 to master's
+merged content. Worktree: `../gno-eql-opcode`.
 
 ## Why
 
@@ -39,28 +40,30 @@ Decide interface-ness at instruction selection, not execution:
 Baseline/after raw numbers saved at /tmp/bench_head.txt and /tmp/bench_proto.txt
 on the original machine (regenerate if gone: bench HEAD of cmp branch vs this).
 
-## TODO to make it PR-ready
+## TODO to make it PR-ready — ALL DONE 2026-06-11 (except item 6, open)
 
-1. **Stringer regen (REQUIRED).** `string_methods.go` was NOT updated; `Op.String()`
-   on 0x39/0x3A will misindex. Regenerate the Op stringer (it's `stringer`-generated;
-   find the `//go:generate` directive). Verify no panic.
-2. **Audit exhaustive Op switches / tables** for the two new ops: gas/CPU tables
-   (`OpCPUEql` etc.), any `switch op` over binary ops, debug/printers, the
-   transcript/replay machinery. grep `OpNeq` / `OpBandn` to find the set of
-   places that enumerate ops.
-3. **Tests:** add a filetest or unit test asserting interface `==`/`!=` routes to
-   the Iface op and still panics on uncomparable dynamic types (the cmp PR's
-   `cmp_uncomp_*` filetests already cover behavior; consider a direct op-selection
-   assertion). Confirm `switch`-tag path (op_exec.go ~985, uses
-   `hasInterfaceStaticType`) is unaffected — it does NOT go through doOpEql.
-4. **Verification gate (project CLAUDE.md):**
-   - `go test ./gno.land/pkg/sdk/vm/ -run Gas`
-   - `go test ./gno.land/pkg/integration/ -run TestTestdata`
-   - `go test ./gnovm/pkg/gnolang/ -run Files -test.short`
-   - run `/simplify`.
-5. **Re-benchmark** with the final code (after stringer) to confirm the -22% holds.
-6. Decide: separate follow-up PR (recommended — it's a perf refinement on top of
-   the cmp fix) vs folding into the cmp PR.
+1. ~~**Stringer regen.**~~ DONE — regenerated `string_methods.go`
+   (`stringer -type=Kind,Op,TransCtrl,TransField,VPType,Word`); `Op.String()`
+   verified for both new ops.
+2. ~~**Audit exhaustive Op switches.**~~ DONE — grep `OpBandn` repo-wide: ops are
+   enumerated in exactly 4 places (const block, run-loop, word2BinaryOp,
+   stringer); all covered, nothing outside pkg/gnolang.
+3. ~~**Tests.**~~ DONE — `TestOpEvalSelectsIfaceCmpOps` (machine_test.go) asserts
+   op selection for iface/concrete EQL/NEQ + LSS-unaffected; behavior covered by
+   the 20 `cmp_uncomp_*` filetests. Switch-tag path (op_exec.go:986) confirmed
+   independent — uses `isEql(m, cv, tv, viaIface)` directly.
+4. ~~**Verification gate.**~~ DONE — Gas ok, TestTestdata ok (137s; note: the
+   `-run txtar` form in CLAUDE.md matches nothing — use `-run TestTestdata`),
+   Files-short ok. `/simplify` run: 3 fixes applied (branch on `op` not `x.Op`
+   in op_eval.go; dropped unreachable bigint gas branch from doOpEqlIface;
+   de-fragilized test assertion via `base := len(m.Ops)`), 2 findings skipped
+   (shared-handler factoring — reintroduces the branch; struct-field cache —
+   settled design).
+5. ~~**Re-benchmark.**~~ DONE — final code vs master, interleaved n=10:
+   43.38n vs 45.01n sec/op(pure), p=0.218 — statistically indistinguishable,
+   regression fully recovered.
+6. **OPEN — decide:** separate follow-up PR (recommended — it's a perf
+   refinement on top of the cmp fix) vs folding into the cmp PR.
 
 ## OPEN DESIGN QUESTION — is two new opcodes the right design? (resume here)
 
@@ -130,6 +133,24 @@ attr prototype passed all 20 `Files/types/cmp_uncomp*` (then discarded).
 **Decision: keep the opcode specialization** (vs drop-entirely: the reviewer
 explicitly flagged the 2.4%, the fix exists, precedent is OpBinary1, and the
 decision is static). Proceed with the TODO list above.
+
+### Third-option search (2026-06-11): runtime-only check is provably impossible
+
+Asked: can isEql apply the uncomparable rule unconditionally, needing no static
+info at all? No — counterexample (verified in Go):
+`var s []int; s == nil` → true, but `any(s) == any(s)` → panic. In gnovm BOTH
+reach isEql as the identical pair `{T: []int, V: nil}` (the `s == nil` nil is
+converted to the slice type — see the MapKind/SliceKind/FuncKind case comment
+in isEql). Same runtime values, different required behavior ⇒ the static
+verdict MUST travel from preprocess to the comparison. Exhaustive carriers, all
+measured: expr node via assertion (cmp PR, +22% isolated), expr node via
+attribute (+17.6%), instruction (opcode, flat). Opcode is the only free one.
+
+Audit surface measured (grep `OpBandn` repo-wide): ops are enumerated in
+exactly 4 places — Op const block (done), run-loop switch (done),
+word2BinaryOp (untouched by design), generated stringer (regenerated
+2026-06-11). No op tables outside pkg/gnolang. Handler duplication matches the
+file's idiom (doOpLss/Leq/Gtr/Geq all repeat the same pop/peek/set shape).
 
 ## Notes
 - Constant `false` arg to `isEql` remains in the common path (cheap). Removing it
