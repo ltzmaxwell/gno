@@ -1574,6 +1574,40 @@ func BenchmarkOpIndex1_Slice(b *testing.B) {
 	reportBenchops(b)
 }
 
+// BenchmarkOpAssign_ByteSlice exercises `b[i] = x` into a Data-backed []byte:
+// the byte-write fast path (op_assign.go assignToIndex) writes the byte
+// straight into the backing array, avoiding the per-assignment DataByteValue
+// pointer box the general path materializes.
+func BenchmarkOpAssign_ByteSlice(b *testing.B) {
+	m := benchMachine()
+	defer m.Release()
+
+	ix := &IndexExpr{}
+	stmt := &AssignStmt{Lhs: []Expr{ix}, Op: ASSIGN}
+
+	st := &SliceType{Elt: Uint8Type}
+	sv := m.Alloc.NewSliceFromData(make([]byte, 100))
+
+	bm.InitMeasure()
+	bm.BeginOpCode(bmSetup)
+	for range b.N {
+		m.PushValue(TypedValue{T: st, V: sv})           // container
+		m.PushValue(TypedValue{T: IntType, N: i2n(42)}) // index
+		rv := TypedValue{T: Uint8Type}
+		rv.SetUint8(7)
+		m.PushValue(rv) // rhs
+		m.PushStmt(stmt)
+		bm.SwitchOpCode(bmTarget)
+		m.doOpAssign()
+		bm.SwitchOpCode(bmSetup)
+		if got := sv.GetBase(m.Store).Data[42]; got != 7 {
+			b.Fatalf("expected 7, got %d", got)
+		}
+		m.Values = m.Values[:0]
+	}
+	reportBenchops(b)
+}
+
 func benchOpIndex1MapHit(b *testing.B, size int) {
 	b.Helper()
 	m := benchMachine()

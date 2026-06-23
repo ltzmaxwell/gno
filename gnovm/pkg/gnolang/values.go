@@ -2057,6 +2057,44 @@ func (tv *TypedValue) GetByteAtIndexInt(store Store, ii int) (res TypedValue, ok
 	return TypedValue{}, false
 }
 
+// dataByteTarget is the write-side counterpart of GetByteAtIndexInt: it
+// resolves a Data-backed (byte) array or slice element to its backing array
+// and absolute Data index, so callers can write the byte in place and skip
+// the heap-allocated DataByteValue pointer box (see GetElementPointer) that
+// the normal lvalue path materializes per assignment. ok is false for
+// strings (not assignable), maps, List-backed and nil containers, in which
+// case the caller must use GetPointerAtIndex. Bounds checks and panics mirror
+// GetElementPointer, so out-of-range writes stay recoverable.
+func (tv *TypedValue) dataByteTarget(store Store, ii int) (base *ArrayValue, idx int, ok bool) {
+	switch baseOf(tv.T).(type) {
+	case *ArrayType:
+		if av, aok := tv.V.(*ArrayValue); aok && av.Data != nil {
+			if ii < 0 {
+				panic(&Exception{Value: typedString(fmt.Sprintf("runtime error: index out of range [%d]", ii))})
+			}
+			if ii >= len(av.Data) {
+				panic(&Exception{Value: typedString(fmt.Sprintf("runtime error: index out of range [%d] with length %d", ii, len(av.Data)))})
+			}
+			return av, ii, true
+		}
+	case *SliceType:
+		if sv, sok := tv.V.(*SliceValue); sok {
+			if base := sv.GetBase(store); base.Data != nil {
+				if ii < 0 {
+					panic(&Exception{Value: typedString(fmt.Sprintf(
+						"runtime error: slice index out of bounds: %d", ii))})
+				} else if sv.Length <= ii {
+					panic(&Exception{Value: typedString(fmt.Sprintf(
+						"runtime error: slice index out of bounds: %d (len=%d)",
+						ii, sv.Length))})
+				}
+				return base, sv.Offset + ii, true
+			}
+		}
+	}
+	return nil, 0, false
+}
+
 func (tv *TypedValue) GetPointerAtIndex(m *Machine, rlm *Realm, alloc *Allocator, store Store, iv *TypedValue) PointerValue {
 	switch bt := baseOf(tv.T).(type) {
 	case PrimitiveType:

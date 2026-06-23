@@ -28,6 +28,12 @@ func (m *Machine) doOpAssign() {
 	rvs := m.PopValues(len(s.Lhs))
 	m.incrCPU(OpCPUSlopeAssign * int64(len(s.Lhs)))
 	for i := len(s.Lhs) - 1; 0 <= i; i-- {
+		// b[i] = x into a Data-backed byte slice/array writes the byte in
+		// place, skipping the per-assignment DataByteValue pointer box.
+		if ix, ok := s.Lhs[i].(*IndexExpr); ok {
+			m.assignToIndex(ix, rvs[i])
+			continue
+		}
 		// Pop lhs value and desired type.
 		lv := m.PopAsPointer(s.Lhs[i])
 		if m.Stage != StagePre && isUntyped(rvs[i].T) && rvs[i].T.Kind() != BoolKind {
@@ -35,6 +41,36 @@ func (m *Machine) doOpAssign() {
 		}
 		lv.Assign2(m, m.Alloc, m.Store, m.Realm, rvs[i], true)
 	}
+}
+
+// assignToIndex performs `x[i] = rv`, popping the index and container operands
+// the IndexExpr lvalue left on the stack (same order as PopAsPointer2). For a
+// Data-backed byte slice/array it writes the byte straight into the backing
+// array, skipping the heap-allocated DataByteValue pointer box the general path
+// materializes per assignment; DidUpdate then marks the array dirty and
+// enforces cross-realm write permissions, matching Assign2's DataByteType
+// branch. Maps and every other container defer to the shared pointerAtIndex.
+func (m *Machine) assignToIndex(ix *IndexExpr, rv TypedValue) {
+	iv := m.PopValue()
+	xv := m.PopValue()
+	if m.Stage != StagePre && isUntyped(rv.T) && rv.T.Kind() != BoolKind {
+		panic("untyped conversion should not happen at runtime")
+	}
+	if xv.T.Kind() != MapKind {
+		if base, idx, ok := xv.dataByteTarget(m.Store, int(iv.ConvertGetInt())); ok {
+			if m.IsReadonly(xv) {
+				m.Panic(typedString(readonlyAccessPanic(ix)))
+			}
+			base.Data[idx] = rv.GetUint8()
+			m.Realm.DidUpdate(m, base, nil, nil)
+			return
+		}
+	}
+	pv, ro := m.pointerAtIndex(ix, xv, iv)
+	if ro {
+		m.Panic(typedString(readonlyAccessPanic(ix)))
+	}
+	pv.Assign2(m, m.Alloc, m.Store, m.Realm, rv, true)
 }
 
 func (m *Machine) doOpAddAssign() {

@@ -2752,6 +2752,27 @@ func (m *Machine) isExternalRealm(base Value) bool {
 	return oid.PkgID != m.Realm.ID
 }
 
+// pointerAtIndex resolves lx (x[i]) to a writable pointer given the
+// already-popped container xv and index iv, applying the per-kind readonly
+// ordering: maps must check readonly before GetPointerAtIndex (which creates a
+// missing entry), other containers after. For a readonly map it panics here
+// (so the entry is never created); callers panic on a true ro return for the
+// non-map case. Shared by PopAsPointer2 and the assignToIndex fallback.
+func (m *Machine) pointerAtIndex(lx Expr, xv, iv *TypedValue) (pv PointerValue, ro bool) {
+	if xv.T.Kind() == MapKind {
+		ro = m.IsReadonly(xv)
+		if ro {
+			// Ensure we always panic, without expecting the caller to do it.
+			m.Panic(typedString(readonlyAccessPanic(lx)))
+		}
+		pv = xv.GetPointerAtIndex(m, m.Realm, m.Alloc, m.Store, iv)
+	} else {
+		pv = xv.GetPointerAtIndex(m, m.Realm, m.Alloc, m.Store, iv)
+		ro = m.IsReadonly(xv)
+	}
+	return
+}
+
 // Returns ro = true if the base is readonly,
 // or if the base's storage realm != m.Realm and both are non-nil,
 // and the lx isn't a composite lit expr.
@@ -2775,19 +2796,7 @@ func (m *Machine) PopAsPointer2(lx Expr) (pv PointerValue, ro bool) {
 	case *IndexExpr:
 		iv := m.PopValue()
 		xv := m.PopValue()
-		if xv.T.Kind() == MapKind {
-			// For maps, GetPointerAtIndex unconditionally creates a new entry for
-			// missing keys. Check readonly before this mutation.
-			ro = m.IsReadonly(xv)
-			if ro {
-				// Ensure we always panic, without expecting the caller to do it.
-				m.Panic(typedString(readonlyAccessPanic(lx)))
-			}
-			pv = xv.GetPointerAtIndex(m, m.Realm, m.Alloc, m.Store, iv)
-		} else {
-			pv = xv.GetPointerAtIndex(m, m.Realm, m.Alloc, m.Store, iv)
-			ro = m.IsReadonly(xv)
-		}
+		pv, ro = m.pointerAtIndex(lx, xv, iv)
 	case *SelectorExpr:
 		xv := m.PopValue()
 		pv = xv.GetPointerToFromTV(m.Alloc, m.Store, lx.Path)
