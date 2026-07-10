@@ -556,15 +556,22 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 			}
 		}
 
-		// Leak accounting: a checkable marker caught by NEITHER Gno nor
-		// the guard is an UNCAUGHT error — gc-invalid code the whole Gno
-		// stack would deploy. Pinned per-line in `// UncaughtError:`
-		// (under-rejection; strictly worse than over-strictness).
+		// Leak accounting. A real leak = gc-invalid code the whole Gno
+		// stack DEPLOYS, i.e. the file is FULLY ACCEPTED: neither Gno nor
+		// the guard errors ANYWHERE. Only then are the checkable markers
+		// pinned per-line in `// UncaughtError:` (under-rejection).
+		//
+		// If the file IS rejected somewhere (Gno or guard errored on any
+		// line) but a specific marker's line isn't matched, that is NOT a
+		// leak — deploy is blocked regardless. It's a line-attribution
+		// mismatch (e.g. `//line` directives remap gc's marker line, or
+		// Gno reports the error one line off). Emitting UncaughtError
+		// there produced ~88% false positives, so those markers are
+		// deliberately left unpinned rather than cried as leaks.
 		uncaught := make(map[int]string)
-		for _, mk := range checkable {
-			_, a := gnoErr[mk.Line]
-			_, b := goTCLines[mk.Line]
-			if !a && !b {
+		fileFullyAccepted := len(gnoErr) == 0 && len(goTCLines) == 0
+		if fileFullyAccepted {
+			for _, mk := range checkable {
 				uncaught[mk.Line] = "uncaught; gc expects: " + strings.Join(mk.Patterns, " | ")
 			}
 		}

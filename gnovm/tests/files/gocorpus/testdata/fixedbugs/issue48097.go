@@ -13,6 +13,3 @@ func f() {} // ERROR "can only use //go:noescape with external func implementati
 
 // GnoError:
 // line 9: function F does not have a body but is not natively defined (did you build after pulling from the repository?)
-
-// UncaughtError:
-// line 12: uncaught; gc expects: can only use //go:noescape with external func implementations

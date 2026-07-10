@@ -24,6 +24,3 @@ var _ = struct{}{ /*line :20:1*/foo /*line :21:1*/: /*line :22:1*/0 }
 
 // GnoOverStrictError:
 // line 19: struct type struct{} has no field foo
-
-// UncaughtError:
-// line 20: uncaught; gc expects: unknown field foo

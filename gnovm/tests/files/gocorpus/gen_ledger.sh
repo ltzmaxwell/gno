@@ -117,10 +117,10 @@ if [ "${#incomplete[@]:-0}" -gt 0 ]; then
 fi
 
 emit_section "🔥 Urgent KnownIssue — runtime divergence (fix now)" \
-  "Gno's run-mode result differs from Go's — a wrong value, or a panic where Go succeeds (e.g. bug446: init-order panic). Unlike static rejects (caught at deploy), these ship and break in production, so they're the must-fix subset. Read each file's pinned // GnoOutput:/// GnoError: vs // GoOutput: to identify the bug. Many files share a root cause; sub-triage (engine panic vs semantic bug vs misrouted feature-gap) is done by reading the behavior." \
+  "Gno's run-mode result differs from Go's — a wrong value, or a panic where Go succeeds (e.g. bug446: init-order panic). These ship past the deploy gate and break in production, so they are the must-fix subset. VERDICT: each entry is attributed via a standalone status marker (✅ Fixed / 🚧 Fixing / 📌 Tracked) plus a one-line root cause; families cluster on a shared PR/issue. Read // GnoOutput:/// GnoError: vs // GoOutput: to confirm." \
   KnownIssue ${urgent[@]+"${urgent[@]}"}
 emit_section "🕳️ Uncaught leak — gc-invalid code deploys" \
-  "Checkable (non-GC_ERROR) markers caught by neither Gno's preprocess nor the go/types guard: the whole stack accepts code gc rejects. Under-rejection — invalid packages deploy — so these rank with (arguably above) the urgent bucket." \
+  "A real leak = the file is FULLY ACCEPTED (neither Gno preprocess nor the go/types guard errors anywhere) yet gc rejects it, so invalid code would deploy — under-rejection, ranks with the urgent bucket. VERDICT: markers here are pinned ONLY when the whole file is accepted; a file rejected elsewhere but with an unmatched marker line (e.g. //line-remapped position) is NOT a leak (deploy blocked) and is intentionally not counted. Remaining true leaks are typically generics (tracked by PR #5921)." \
   UncaughtError ${uncaught[@]+"${uncaught[@]}"}
 emit_section "🟠 Over-strict — Gno-only static rejects (fix deferred)" \
   "Gno's preprocess rejects code that both gc (markers) and the go/types guard accept. Only over-rejects otherwise-valid packages (they can't deploy/call) — no inconsistent state — so deferred. Note = human verdict (compile KnownIssue) or the first over-strict line (errorcheck GnoOverStrictError)." \

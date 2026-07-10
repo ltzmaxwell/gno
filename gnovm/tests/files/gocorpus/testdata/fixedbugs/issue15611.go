@@ -27,8 +27,3 @@ const (
 
 // GnoOverStrictError:
 // line 10: rune literal not terminated (and 4 more errors)
-
-// UncaughtError:
-// line 11: uncaught; gc expects: newline in character literal|newline in rune literal
-// line 12: uncaught; gc expects: 
-// line 17: uncaught; gc expects: 

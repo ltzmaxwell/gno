@@ -138,6 +138,9 @@ func main() {
   	}
 }
 
+
+// Tracked: issue #5662; local type decl in a block fails preprocess.
+
 // GnoOutput:
 
 // GnoError:
@@ -146,4 +149,4 @@ func main() {
 // GoOutput:
 
 // KnownIssue:
-// TODO: explain the Gno bug (Gno errors where Go runs clean)
+// Local type decl inside a block fails preprocess (expected type expr, got *BlockStmt).

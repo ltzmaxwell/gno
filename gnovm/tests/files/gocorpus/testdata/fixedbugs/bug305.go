@@ -28,6 +28,3 @@ var a int = "bogus"
 
 // GnoOverStrictError:
 // line 23: cannot use untyped string as IntKind
-
-// UncaughtError:
-// line 24: uncaught; gc expects: cannot|incompatible

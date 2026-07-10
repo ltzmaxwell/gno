@@ -26,6 +26,3 @@ func New() I {
 // line 16: 2: [function "New" does not terminate]
 // line 17: struct{} does not implement main.I (missing method )
 // line 18: expected declaration, found '}'
-
-// UncaughtError:
-// line 13: uncaught; gc expects: interface contains embedded non-interface|embedding non-interface type

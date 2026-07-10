@@ -163,6 +163,9 @@ func fromBits(b uint64, x interface{}) interface{} {
 	return "?"
 }
 
+
+// Fixing: PR #5867 (apd→big.Rat); candidate, unverified.
+
 // GnoOutput:
 
 // GnoError:
@@ -171,4 +174,4 @@ func fromBits(b uint64, x interface{}) interface{} {
 // GoOutput:
 
 // KnownIssue:
-// TODO: explain the Gno bug (Gno errors where Go runs clean)
+// Near-max float32 constant conversion rejected ('too close to +-Inf') — apd BigdecValue path.

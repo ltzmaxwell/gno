@@ -28,6 +28,3 @@ func hey() { // ERROR "can only use //go:noescape with external func implementat
 // line 10: function foo does not have a body but is not natively defined (did you build after pulling from the repository?)
 // line 13: function bar does not have a body but is not natively defined (did you build after pulling from the repository?)
 // line 16: function groot does not have a body but is not natively defined (did you build after pulling from the repository?)
-
-// UncaughtError:
-// line 19: uncaught; gc expects: can only use //go:noescape with external func implementations

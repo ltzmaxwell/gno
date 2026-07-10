@@ -38,6 +38,9 @@ func main() {
 	}
 }
 
+
+// Fixing: PR #5721 (fix/method40, BFS embedded lookup); verified clean on branch.
+
 // GnoOutput:
 
 // GnoError:
@@ -46,4 +49,4 @@ func main() {
 // GoOutput:
 
 // KnownIssue:
-// TODO: explain the Gno bug (Gno errors where Go runs clean)
+// Promoted field/method through embedded (pointer) structs not resolved — embedded-lookup bug.

@@ -229,6 +229,9 @@ func main() {
 	}
 }
 
+
+// Tracked: issue #5787 (method expressions).
+
 // GnoOutput:
 
 // GnoError:
@@ -237,4 +240,4 @@ func main() {
 // GoOutput:
 
 // KnownIssue:
-// TODO: explain the Gno bug (Gno errors where Go runs clean)
+// Method expression (*U).Sum(&U{}, ...) rejected — method-expression support gap.

@@ -19,10 +19,3 @@ type b interface {
 
 // GoTypeCheckError:
 // line 9: can only use ... with final parameter (and 5 more errors)
-
-// UncaughtError:
-// line 10: uncaught; gc expects: non-final parameter a|must be last parameter|can only use ... with final parameter
-// line 11: uncaught; gc expects: non-final parameter|must be last parameter|can only use ... with final parameter
-// line 13: uncaught; gc expects: non-final parameter|must be last parameter|can only use ... with final parameter
-// line 15: uncaught; gc expects: non-final parameter|must be last parameter|can only use ... with final parameter
-// line 16: uncaught; gc expects: non-final parameter a|must be last parameter|can only use ... with final parameter

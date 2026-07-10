@@ -132,6 +132,9 @@ func main() {
 	}
 }
 
+
+// Tracked: issue #5662 (same local-type-in-block root cause as bigmap.go).
+
 // GnoOutput:
 
 // GnoError:
@@ -140,4 +143,4 @@ func main() {
 // GoOutput:
 
 // KnownIssue:
-// TODO: explain the Gno bug (Gno errors where Go runs clean)
+// Local type decl inside a block (used by a closure) fails preprocess; same root cause as bigmap.go.

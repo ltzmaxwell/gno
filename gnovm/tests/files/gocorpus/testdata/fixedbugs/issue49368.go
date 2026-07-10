@@ -12,3 +12,5 @@ type _ interface {
 
 // UncaughtError:
 // line 10: uncaught; gc expects: 
+
+// Fixing: PR #5921 (reject go1.18 generics at deploy); flips to caught on merge.

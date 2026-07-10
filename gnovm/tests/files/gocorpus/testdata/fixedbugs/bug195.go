@@ -53,7 +53,3 @@ type I6 interface {
 // line 23: expected declaration, found '}'
 // line 26: expected declaration, found I5
 // line 27: expected declaration, found '}'
-
-// UncaughtError:
-// line 9: uncaught; gc expects: interface
-// line 12: uncaught; gc expects: interface

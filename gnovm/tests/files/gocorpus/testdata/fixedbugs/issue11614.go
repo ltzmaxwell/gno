@@ -28,6 +28,3 @@ func main() {
 // GoTypeCheckError:
 // line 18: (I) (type) is not an expression
 // line 22: (interface{int}) (type) is not an expression
-
-// UncaughtError:
-// line 14: uncaught; gc expects: interface contains embedded non-interface|embedding non-interface type int requires

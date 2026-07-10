@@ -19,6 +19,3 @@ func _() {
 
 // GnoOverStrictError:
 // line 12: 0: range iteration requires map, string, array, slice, or pointer to array
-
-// UncaughtError:
-// line 13: uncaught; gc expects: cannot range over 10

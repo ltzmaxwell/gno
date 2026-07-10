@@ -28,7 +28,3 @@ var x     // error on line 24, not 30
 
 // GnoOverStrictError:
 // line 19: import path must be a string (and 1 more errors)
-
-// UncaughtError:
-// line 20: uncaught; gc expects: import path must be a string
-// line 24: uncaught; gc expects: syntax error: unexpected newline, expecting type|expected type

@@ -22,7 +22,3 @@ func init() int { return 1 } // ERROR "func init must have no arguments and no r
 
 // GnoOverStrictError:
 // line 7: 29: wrong argument count in call to init.1<VPBlock(2,1)>
-
-// UncaughtError:
-// line 9: uncaught; gc expects: func main must have no arguments and no return values
-// line 12: uncaught; gc expects: func init must have no arguments and no return values

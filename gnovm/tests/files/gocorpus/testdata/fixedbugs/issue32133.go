@@ -47,12 +47,3 @@ func _() {
 
 // GnoOverStrictError:
 // line 9: string literal not terminated (and 7 more errors)
-
-// UncaughtError:
-// line 10: uncaught; gc expects: newline in string
-// line 11: uncaught; gc expects: newline in character literal|newline in rune literal
-// line 12: uncaught; gc expects: newline in string
-// line 13: uncaught; gc expects: string not terminated
-// line 20: uncaught; gc expects: hexadecimal literal has no digits
-// line 24: uncaught; gc expects: hexadecimal mantissa requires a 'p' exponent
-// line 28: uncaught; gc expects: '_' must separate successive digits

@@ -15,3 +15,5 @@ func Bar[T empty]() {} // ERROR "type parameter requires go1\.18 or later \(-lan
 // UncaughtError:
 // line 11: uncaught; gc expects: 
 // line 13: uncaught; gc expects: 
+
+// Fixing: PR #5921 (reject go1.18 generics at deploy); flips to caught on merge.

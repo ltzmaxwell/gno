@@ -20,6 +20,3 @@ func main() {
 
 // GoTypeCheckError:
 // line 11: illegal character U+003F '?' (and 1 more errors)
-
-// UncaughtError:
-// line 13: uncaught; gc expects: unexpected keyword var|expected identifier|expected type

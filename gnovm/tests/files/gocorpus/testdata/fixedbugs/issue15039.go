@@ -24,6 +24,9 @@ func main() {
 	}
 }
 
+
+// Fixing: WIP fix/issue15039 (int→string totality); no PR yet.
+
 // GnoOutput:
 
 // GnoError:
@@ -32,4 +35,4 @@ func main() {
 // GoOutput:
 
 // KnownIssue:
-// TODO: explain the Gno bug (Gno errors where Go runs clean)
+// string(1<<100) rejected — int→string conversion should be total (huge/out-of-range → U+FFFD).

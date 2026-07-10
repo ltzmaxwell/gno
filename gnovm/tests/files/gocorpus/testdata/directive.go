@@ -56,27 +56,4 @@ func f() {
 	type T int
 }
 
-// Error:
-// main:0:0: name main not declared
-
-// GnoOutput:
-
-// GnoError:
-// main:0:0: name main not declared
-
-// GoOutput:
-// # gnofiletest
-// ./main.go:9:3: misplaced compiler directive
-// ./main.go:11:3: misplaced compiler directive
-// ./main.go:21:3: misplaced compiler directive
-// ./main.go:23:3: misplaced compiler directive
-// ./main.go:26:3: misplaced compiler directive
-// ./main.go:29:3: misplaced compiler directive
-// ./main.go:33:4: misplaced compiler directive
-// ./main.go:35:4: misplaced compiler directive
-// ./main.go:46:4: misplaced compiler directive
-// ./main.go:50:4: misplaced compiler directive
-// ./main.go:50:4: too many errors
-
-// KnownIssue:
-// TODO: explain the Gno bug (Gno errors where Go runs clean)
+// Unsupported: gc pragma-placement enforcement; //go: directives are inert comments in Gno

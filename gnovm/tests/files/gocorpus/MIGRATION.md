@@ -8,35 +8,33 @@ do not edit by hand; re-run after `--update-golden-tests`.
 
 | Bucket | Count | Meaning |
 |---|--:|---|
-| 🔥 **Urgent KnownIssue** | 23 | runtime divergence — Gno's run result differs from Go's (wrong value, or panic where Go succeeds); ships past deploy, breaks in production; **fix now** |
-| 🕳️ **Uncaught leak** | 17 | gc-invalid code caught by NEITHER Gno preprocess nor go/types — would deploy; under-rejection, **fix now** |
-| 🟠 **Over-strict** | 159 | Gno rejects code gc *and* go/types accept (static; caught at deploy, no inconsistent state — fix deferred) |
+| 🔥 **Urgent KnownIssue** | 21 | runtime divergence — Gno's run result differs from Go's (wrong value, or panic where Go succeeds); ships past deploy, breaks in production; **fix now** |
+| 🕳️ **Uncaught leak** | 2 | gc-invalid code caught by NEITHER Gno preprocess nor go/types — would deploy; under-rejection, **fix now** |
+| 🟠 **Over-strict** | 170 | Gno rejects code gc *and* go/types accept (static; caught at deploy, no inconsistent state — fix deferred) |
 | 🔵 KnownDivergence | 40 | accepted run-mode difference (not a bug) |
-| 🛡️ Permissive-GuardOnly | 54 | Gno preprocess accepts; the go/types guard alone rejects — holds in production, but is the native-coverage worklist for go/types removal |
-| ⚪ Unsupported | 826 | feature gap (unsupported import / language feature); skipped |
-| ✅ Clean | 949 | verified, no outstanding issue |
+| 🛡️ Permissive-GuardOnly | 56 | Gno preprocess accepts; the go/types guard alone rejects — holds in production, but is the native-coverage worklist for go/types removal |
+| ⚪ Unsupported | 828 | feature gap (unsupported import / language feature); skipped |
+| ✅ Clean | 951 | verified, no outstanding issue |
 | **Total migrated** | 2068 | |
 
-## 🔥 Urgent KnownIssue — runtime divergence (fix now) (23)
+## 🔥 Urgent KnownIssue — runtime divergence (fix now) (21)
 
-Gno's run-mode result differs from Go's — a wrong value, or a panic where Go succeeds (e.g. bug446: init-order panic). Unlike static rejects (caught at deploy), these ship and break in production, so they're the must-fix subset. Read each file's pinned // GnoOutput:/// GnoError: vs // GoOutput: to identify the bug. Many files share a root cause; sub-triage (engine panic vs semantic bug vs misrouted feature-gap) is done by reading the behavior.
+Gno's run-mode result differs from Go's — a wrong value, or a panic where Go succeeds (e.g. bug446: init-order panic). These ship past the deploy gate and break in production, so they are the must-fix subset. VERDICT: each entry is attributed via a standalone status marker (✅ Fixed / 🚧 Fixing / 📌 Tracked) plus a one-line root cause; families cluster on a shared PR/issue. Read // GnoOutput:/// GnoError: vs // GoOutput: to confirm.
 
-- [`bigmap.go`](testdata/bigmap.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`closure2.go`](testdata/closure2.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`convert4.go`](testdata/convert4.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`ddd.go`](testdata/ddd.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`directive.go`](testdata/directive.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/bug253.go`](testdata/fixedbugs/bug253.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
+- [`bigmap.go`](testdata/bigmap.go) — Local type decl inside a block fails preprocess (expected type expr, got *BlockStmt). — 📌 Tracked: issue #5662; local type decl in a block fails preprocess.
+- [`closure2.go`](testdata/closure2.go) — Local type decl inside a block (used by a closure) fails preprocess; same root cause as bigmap.go. — 📌 Tracked: issue #5662 (same local-type-in-block root cause as bigmap.go).
+- [`convert4.go`](testdata/convert4.go) — Slice→array-pointer conversion (*[5]string)(ss) rejected; same family as issue54467. — 🚧 Fixing: PR #5599 (slice-to-array conversion); candidate, unverified.
+- [`ddd.go`](testdata/ddd.go) — Method expression (*U).Sum(&U{}, ...) rejected — method-expression support gap. — 📌 Tracked: issue #5787 (method expressions).
+- [`fixedbugs/bug253.go`](testdata/fixedbugs/bug253.go) — Promoted field s4.i through embedded S3{S1,S2} not resolved — embedded-lookup depth bug. — 🚧 Fixing: PR #5721 (fix/method40, BFS embedded lookup); candidate, unverified.
 - [`fixedbugs/bug336.go`](testdata/fixedbugs/bug336.go) — Engine panic root cause FIXED on branch `fix/decltype_mutual` (off master):
-- [`fixedbugs/bug485.go`](testdata/fixedbugs/bug485.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/issue15039.go`](testdata/fixedbugs/issue15039.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/issue16130.go`](testdata/fixedbugs/issue16130.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
+- [`fixedbugs/bug485.go`](testdata/fixedbugs/bug485.go) — Promoted field/method through embedded (pointer) structs not resolved — embedded-lookup bug. — 🚧 Fixing: PR #5721 (fix/method40, BFS embedded lookup); verified clean on branch.
+- [`fixedbugs/issue15039.go`](testdata/fixedbugs/issue15039.go) — string(1<<100) rejected — int→string conversion should be total (huge/out-of-range → U+FFFD). — 🚧 Fixing: WIP fix/issue15039 (int→string totality); no PR yet.
 - [`fixedbugs/issue24547.go`](testdata/fixedbugs/issue24547.go) — Embedded method lookup mishandles shadowing across depths: Buffer's — 🚧 Fixing: PR #5721 (fix/method40, BFS lookup); verified clean on branch, broken on master; re-golden after merge.
 - [`fixedbugs/issue26094.go`](testdata/fixedbugs/issue26094.go) — Local-type identity is already correct (the assertion fails as it — 🚧 Fixing: PR #5732 (fix/5667, typedRuntimeError); verified on branch (wording gap remains), broken on master; reclassify KnownDivergence after merge.
 - [`fixedbugs/issue29304.go`](testdata/fixedbugs/issue29304.go) — Method expressions on interface types are unsupported: error.Error(err) — 📌 Tracked: issue #5787 (method expressions: interface/promoted/mixed-receiver forms); broken on master, no PR yet.
 - [`fixedbugs/issue4495.go`](testdata/fixedbugs/issue4495.go) — Method expressions on interface types are unsupported: I.m(t) is — 📌 Tracked: issue #5787 (method expressions: interface/promoted/mixed-receiver forms); broken on master, no PR yet.
 - [`fixedbugs/issue52072.go`](testdata/fixedbugs/issue52072.go) — defer i.M() on an interface holding nil *T panics when the defer is — 🚧 Fixing: PR #5737 (fix/defer12, call-time dispatch); verified clean on branch, broken on master; re-golden after merge.
-- [`float_lit2.go`](testdata/float_lit2.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
+- [`float_lit2.go`](testdata/float_lit2.go) — Near-max float32 constant conversion rejected ('too close to +-Inf') — apd BigdecValue path. — 🚧 Fixing: PR #5867 (apd→big.Rat); candidate, unverified.
 - [`ken/embed.go`](testdata/ken/embed.go) — Promoted-field lookup through embedded (pointer) structs fails at — 🚧 Fixing: PR #5721 (fix/method40, BFS lookup); verified clean on branch, broken on master; re-golden after merge.
 - [`map.go`](testdata/map.go) — Map composite-literal keys don't resolve variables declared by an — 📌 Tracked: issue #5910; broken on master, no PR yet.
 - [`method.go`](testdata/method.go) — Mixed-receiver method expressions are unsupported: (*S).val(&s) with a — 📌 Tracked: issue #5787 (method expressions: interface/promoted/mixed-receiver forms); broken on master, no PR yet.
@@ -45,29 +43,14 @@ Gno's run-mode result differs from Go's — a wrong value, or a panic where Go s
 - [`recover2.go`](testdata/recover2.go) — Runtime panics carry a bare string, so v.(error) fails ("string doesn't — 🚧 Fixing: PR #5732 (fix/5667, typedRuntimeError); partial on branch (wording gap at test4), broken on master; re-check after merge.
 - [`typeswitch1.go`](testdata/typeswitch1.go) — In `switch xx := x.(type)`, the `case nil:` clause fails to declare the — 🚧 Fixing: PR #5766 (fix/typeswitch1, case-nil tag-type handling); verified clean on branch, broken on master; re-golden after merge.
 
-## 🕳️ Uncaught leak — gc-invalid code deploys (17)
+## 🕳️ Uncaught leak — gc-invalid code deploys (2)
 
-Checkable (non-GC_ERROR) markers caught by neither Gno's preprocess nor the go/types guard: the whole stack accepts code gc rejects. Under-rejection — invalid packages deploy — so these rank with (arguably above) the urgent bucket.
+A real leak = the file is FULLY ACCEPTED (neither Gno preprocess nor the go/types guard errors anywhere) yet gc rejects it, so invalid code would deploy — under-rejection, ranks with the urgent bucket. VERDICT: markers here are pinned ONLY when the whole file is accepted; a file rejected elsewhere but with an unmatched marker line (e.g. //line-remapped position) is NOT a leak (deploy blocked) and is intentionally not counted. Remaining true leaks are typically generics (tracked by PR #5921).
 
-- [`fixedbugs/bug195.go`](testdata/fixedbugs/bug195.go) — line 9: uncaught; gc expects: interface
-- [`fixedbugs/bug305.go`](testdata/fixedbugs/bug305.go) — line 24: uncaught; gc expects: cannot|incompatible
-- [`fixedbugs/issue10975.go`](testdata/fixedbugs/issue10975.go) — line 13: uncaught; gc expects: interface contains embedded non-interface|embedding non-interface type
-- [`fixedbugs/issue11610.go`](testdata/fixedbugs/issue11610.go) — line 13: uncaught; gc expects: unexpected keyword var|expected identifier|expected type
-- [`fixedbugs/issue11614.go`](testdata/fixedbugs/issue11614.go) — line 14: uncaught; gc expects: interface contains embedded non-interface|embedding non-interface type int requires
-- [`fixedbugs/issue13274.go`](testdata/fixedbugs/issue13274.go) — line 11: uncaught; gc expects: unexpected EOF|expected .*}.*
-- [`fixedbugs/issue15611.go`](testdata/fixedbugs/issue15611.go) — line 11: uncaught; gc expects: newline in character literal|newline in rune literal
-- [`fixedbugs/issue18331.go`](testdata/fixedbugs/issue18331.go) — line 19: uncaught; gc expects: can only use //go:noescape with external func implementations
-- [`fixedbugs/issue18393.go`](testdata/fixedbugs/issue18393.go) — line 20: uncaught; gc expects: import path must be a string
-- [`fixedbugs/issue24339.go`](testdata/fixedbugs/issue24339.go) — line 20: uncaught; gc expects: unknown field foo
-- [`fixedbugs/issue28450.go`](testdata/fixedbugs/issue28450.go) — line 10: uncaught; gc expects: non-final parameter a|must be last parameter|can only use ... with final parameter
-- [`fixedbugs/issue32133.go`](testdata/fixedbugs/issue32133.go) — line 10: uncaught; gc expects: newline in string
-- [`fixedbugs/issue48097.go`](testdata/fixedbugs/issue48097.go) — line 12: uncaught; gc expects: can only use //go:noescape with external func implementations
-- [`fixedbugs/issue49368.go`](testdata/fixedbugs/issue49368.go) — line 10: uncaught; gc expects: 
-- [`fixedbugs/issue51531.go`](testdata/fixedbugs/issue51531.go) — line 11: uncaught; gc expects: 
-- [`fixedbugs/issue67141.go`](testdata/fixedbugs/issue67141.go) — line 13: uncaught; gc expects: cannot range over 10
-- [`mainsig.go`](testdata/mainsig.go) — line 9: uncaught; gc expects: func main must have no arguments and no return values
+- [`fixedbugs/issue49368.go`](testdata/fixedbugs/issue49368.go) — line 10: uncaught; gc expects:  — 🚧 Fixing: PR #5921 (reject go1.18 generics at deploy); flips to caught on merge.
+- [`fixedbugs/issue51531.go`](testdata/fixedbugs/issue51531.go) — line 11: uncaught; gc expects:  — 🚧 Fixing: PR #5921 (reject go1.18 generics at deploy); flips to caught on merge.
 
-## 🟠 Over-strict — Gno-only static rejects (fix deferred) (159)
+## 🟠 Over-strict — Gno-only static rejects (fix deferred) (170)
 
 Gno's preprocess rejects code that both gc (markers) and the go/types guard accept. Only over-rejects otherwise-valid packages (they can't deploy/call) — no inconsistent state — so deferred. Note = human verdict (compile KnownIssue) or the first over-strict line (errorcheck GnoOverStrictError).
 
@@ -91,6 +74,7 @@ Gno's preprocess rejects code that both gc (markers) and the go/types guard acce
 - [`fixedbugs/bug13343.go`](testdata/fixedbugs/bug13343.go) — line 14: 2: [function "f" does not terminate]
 - [`fixedbugs/bug137.go`](testdata/fixedbugs/bug137.go) — TODO: explain the Gno bug (Gno rejects code gc + go/types accept)
 - [`fixedbugs/bug182.go`](testdata/fixedbugs/bug182.go) — line 13: expected declaration, found '}'
+- [`fixedbugs/bug195.go`](testdata/fixedbugs/bug195.go) — line 15: expected declaration, found x
 - [`fixedbugs/bug200.go`](testdata/fixedbugs/bug200.go) — line 15: 3: duplicate type func(int) in type switch
 - [`fixedbugs/bug209.go`](testdata/fixedbugs/bug209.go) — line 13: expected declaration, found '}'
 - [`fixedbugs/bug228.go`](testdata/fixedbugs/bug228.go) — line 9: function f does not have a body but is not natively defined (did you build after pulling from the repository?)
@@ -99,6 +83,7 @@ Gno's preprocess rejects code that both gc (markers) and the go/types guard acce
 - [`fixedbugs/bug255.go`](testdata/fixedbugs/bug255.go) — line 19: function ff does not have a body but is not natively defined (did you build after pulling from the repository?)
 - [`fixedbugs/bug274.go`](testdata/fixedbugs/bug274.go) — line 24: expected statement, found 'case'
 - [`fixedbugs/bug298.go`](testdata/fixedbugs/bug298.go) — line 9: function Sum does not have a body but is not natively defined (did you build after pulling from the repository?)
+- [`fixedbugs/bug305.go`](testdata/fixedbugs/bug305.go) — line 23: cannot use untyped string as IntKind
 - [`fixedbugs/bug326.go`](testdata/fixedbugs/bug326.go) — line 21: 2: [function "i" does not terminate]
 - [`fixedbugs/bug349.go`](testdata/fixedbugs/bug349.go) — line 11: 2: [function "foo" does not terminate]
 - [`fixedbugs/bug353.go`](testdata/fixedbugs/bug353.go) — line 18: expected declaration, found 'for'
@@ -115,15 +100,18 @@ Gno's preprocess rejects code that both gc (markers) and the go/types guard acce
 - [`fixedbugs/bug487.go`](testdata/fixedbugs/bug487.go) — line 22: 2: [function "H" does not terminate]
 - [`fixedbugs/bug516.go`](testdata/fixedbugs/bug516.go) — TODO: explain the Gno bug (Gno rejects code gc + go/types accept)
 - [`fixedbugs/bug518.go`](testdata/fixedbugs/bug518.go) — line 11: 2: [function "F2" does not terminate]
+- [`fixedbugs/issue10975.go`](testdata/fixedbugs/issue10975.go) — line 16: 2: [function "New" does not terminate]
 - [`fixedbugs/issue11699.go`](testdata/fixedbugs/issue11699.go) — TODO: explain the Gno bug (Gno rejects code gc + go/types accept)
 - [`fixedbugs/issue11737.go`](testdata/fixedbugs/issue11737.go) — line 11: function f does not have a body but is not natively defined (did you build after pulling from the repository?)
 - [`fixedbugs/issue13273.go`](testdata/fixedbugs/issue13273.go) — line 16: channels are not permitted
+- [`fixedbugs/issue13274.go`](testdata/fixedbugs/issue13274.go) — line 13: expected '(', found main
 - [`fixedbugs/issue13319.go`](testdata/fixedbugs/issue13319.go) — line 10: name x not declared
 - [`fixedbugs/issue13337.go`](testdata/fixedbugs/issue13337.go) — TODO: explain the Gno bug (Gno rejects code gc + go/types accept)
 - [`fixedbugs/issue13415.go`](testdata/fixedbugs/issue13415.go) — line 13: select statements are not permitted
 - [`fixedbugs/issue14006.go`](testdata/fixedbugs/issue14006.go) — line 51: expected statement, found 'case' (and 3 more errors)
 - [`fixedbugs/issue14520a.go`](testdata/fixedbugs/issue14520a.go) — line 10: expected declaration, found bogus (and 1 more errors)
 - [`fixedbugs/issue14540.go`](testdata/fixedbugs/issue14540.go) — line 12: fallthrough statement out of place
+- [`fixedbugs/issue15611.go`](testdata/fixedbugs/issue15611.go) — line 10: rune literal not terminated (and 4 more errors)
 - [`fixedbugs/issue15898.go`](testdata/fixedbugs/issue15898.go) — line 10: 3: duplicate type nil in type switch
 - [`fixedbugs/issue16369.go`](testdata/fixedbugs/issue16369.go) — line 10: expected declaration, found M
 - [`fixedbugs/issue16439.go`](testdata/fixedbugs/issue16439.go) — line 15: imaginaries are not supported
@@ -132,6 +120,8 @@ Gno's preprocess rejects code that both gc (markers) and the go/types guard acce
 - [`fixedbugs/issue17588.go`](testdata/fixedbugs/issue17588.go) — line 17: expected 'IDENT', found '{' (and 4 more errors)
 - [`fixedbugs/issue17758.go`](testdata/fixedbugs/issue17758.go) — line 14: expected declaration, found _
 - [`fixedbugs/issue18231.go`](testdata/fixedbugs/issue18231.go) — line 16: 2: types cannot be elided in composite literals for struct types
+- [`fixedbugs/issue18331.go`](testdata/fixedbugs/issue18331.go) — line 10: function foo does not have a body but is not natively defined (did you build after pulling from the repository?)
+- [`fixedbugs/issue18393.go`](testdata/fixedbugs/issue18393.go) — line 19: import path must be a string (and 1 more errors)
 - [`fixedbugs/issue18640.go`](testdata/fixedbugs/issue18640.go) — TODO: explain the Gno bug (Gno rejects code gc + go/types accept)
 - [`fixedbugs/issue18747.go`](testdata/fixedbugs/issue18747.go) — line 20: missing condition in if statement (and 1 more errors)
 - [`fixedbugs/issue18915.go`](testdata/fixedbugs/issue18915.go) — line 17: expected declaration, found '}'
@@ -146,12 +136,14 @@ Gno's preprocess rejects code that both gc (markers) and the go/types guard acce
 - [`fixedbugs/issue22904.go`](testdata/fixedbugs/issue22904.go) — line 18: a<VPInvalid(0)> is not a type
 - [`fixedbugs/issue23587.go`](testdata/fixedbugs/issue23587.go) — line 10: checker for ILLEGAL does not exist
 - [`fixedbugs/issue23664.go`](testdata/fixedbugs/issue23664.go) — line 16: expected declaration, found '}'
+- [`fixedbugs/issue24339.go`](testdata/fixedbugs/issue24339.go) — line 19: struct type struct{} has no field foo
 - [`fixedbugs/issue24470.go`](testdata/fixedbugs/issue24470.go) — line 14: name x not declared
 - [`fixedbugs/issue26616.go`](testdata/fixedbugs/issue26616.go) — line 19: function three does not have a body but is not natively defined (did you build after pulling from the repository?)
 - [`fixedbugs/issue26855.go`](testdata/fixedbugs/issue26855.go) — line 22: 2: cannot use *gno.land/p/filetest/p.T as struct{}
 - [`fixedbugs/issue27267.go`](testdata/fixedbugs/issue27267.go) — TODO: explain the Gno bug (Gno rejects code gc + go/types accept)
 - [`fixedbugs/issue28085.go`](testdata/fixedbugs/issue28085.go) — line 9: 2: duplicate key (0 int) in map literal
 - [`fixedbugs/issue28926.go`](testdata/fixedbugs/issue28926.go) — line 17: expected '}', found e (and 1 more errors)
+- [`fixedbugs/issue32133.go`](testdata/fixedbugs/issue32133.go) — line 9: string literal not terminated (and 7 more errors)
 - [`fixedbugs/issue33386.go`](testdata/fixedbugs/issue33386.go) — line 17: expected operand, found '}' (and 5 more errors)
 - [`fixedbugs/issue33460.go`](testdata/fixedbugs/issue33460.go) — line 31: 2: duplicate key ("a" string) in map literal
 - [`fixedbugs/issue38125.go`](testdata/fixedbugs/issue38125.go) — TODO: explain the Gno bug (Gno rejects code gc + go/types accept)
@@ -190,6 +182,7 @@ Gno's preprocess rejects code that both gc (markers) and the go/types guard acce
 - [`fixedbugs/issue6405.go`](testdata/fixedbugs/issue6405.go) — line 11: 2: [function "Open" does not terminate]
 - [`fixedbugs/issue6572.go`](testdata/fixedbugs/issue6572.go) — line 10: expected declaration, found 'return' (and 1 more errors)
 - [`fixedbugs/issue6671.go`](testdata/fixedbugs/issue6671.go) — line 23: cannot use bool as gno.land/p/filetest/p[gno.land/p/filetest/p/issue6671.go:14:1-29:2].mybool without explicit conversion
+- [`fixedbugs/issue67141.go`](testdata/fixedbugs/issue67141.go) — line 12: 0: range iteration requires map, string, array, slice, or pointer to array
 - [`fixedbugs/issue7675.go`](testdata/fixedbugs/issue7675.go) — line 11: function f does not have a body but is not natively defined (did you build after pulling from the repository?)
 - [`fixedbugs/issue8042.go`](testdata/fixedbugs/issue8042.go) — TODO: explain the Gno bug (Gno rejects code gc + go/types accept)
 - [`fixedbugs/issue8183.go`](testdata/fixedbugs/issue8183.go) — line 19: cannot use iota outside constant declaration
@@ -205,6 +198,7 @@ Gno's preprocess rejects code that both gc (markers) and the go/types guard acce
 - [`interface/embed2.go`](testdata/interface/embed2.go) — line 73: name Exit not declared
 - [`label.go`](testdata/label.go) — line 20: select statements are not permitted
 - [`label1.go`](testdata/label1.go) — line 20: select statements are not permitted
+- [`mainsig.go`](testdata/mainsig.go) — line 7: 29: wrong argument count in call to init.1<VPBlock(2,1)>
 - [`makemap.go`](testdata/makemap.go) — line 31: imaginaries are not supported
 - [`method1.go`](testdata/method1.go) — line 20: function f does not have a body but is not natively defined (did you build after pulling from the repository?)
 - [`range2.go`](testdata/range2.go) — line 23: expected declaration, found '}'
@@ -276,7 +270,7 @@ Gno's output legitimately differs from Go's (formatting, map order, error wordin
 - [`typeparam/issue52124.go`](testdata/typeparam/issue52124.go) — compile-error-wording: both Gno and Go reject; wording/stage differ
 - [`zerosize.go`](testdata/zerosize.go) — see compatible doc.
 
-## 🛡️ Permissive-GuardOnly — Gno accepts, go/types alone rejects (54)
+## 🛡️ Permissive-GuardOnly — Gno accepts, go/types alone rejects (56)
 
 Every gc marker is caught by the go/types guard and NONE by Gno's own preprocess (an empty Gno catch is synced as no GnoError block — absence means lenient, not unsynced). The rejection contract holds in production (guard runs at addpkg), but each file flips to silently-accepted the day the transitional guard is removed — this is the native type_check.go coverage worklist. Note shows the guard's first error.
 
@@ -296,6 +290,7 @@ Every gc marker is caught by the go/types guard and NONE by Gno's own preprocess
 - [`fixedbugs/bug373.go`](testdata/fixedbugs/bug373.go) — line 12: t declared and not used
 - [`fixedbugs/bug379.go`](testdata/fixedbugs/bug379.go) — line 17: 1 + 2 (untyped int constant 3) is not used
 - [`fixedbugs/bug416.go`](testdata/fixedbugs/bug416.go) — line 13: field and method with the same name X
+- [`fixedbugs/issue11614.go`](testdata/fixedbugs/issue11614.go) — line 18: (I) (type) is not an expression
 - [`fixedbugs/issue13539.go`](testdata/fixedbugs/issue13539.go) — line 13: "math" imported and not used
 - [`fixedbugs/issue13779.go`](testdata/fixedbugs/issue13779.go) — line 14: cannot assign to struct field students["sally"].age in map
 - [`fixedbugs/issue14988.go`](testdata/fixedbugs/issue14988.go) — line 12: invalid map key type k
@@ -308,6 +303,7 @@ Every gc marker is caught by the go/types guard and NONE by Gno's own preprocess
 - [`fixedbugs/issue24159.go`](testdata/fixedbugs/issue24159.go) — line 14: duplicate case byte(0) (constant 0 of type byte) in expression switch
 - [`fixedbugs/issue28058.go`](testdata/fixedbugs/issue28058.go) — line 12: invalid map key type func()
 - [`fixedbugs/issue28268.go`](testdata/fixedbugs/issue28268.go) — line 19: field and method with the same name b
+- [`fixedbugs/issue28450.go`](testdata/fixedbugs/issue28450.go) — line 9: can only use ... with final parameter (and 5 more errors)
 - [`fixedbugs/issue29870b.go`](testdata/fixedbugs/issue29870b.go) — line 13: declared and not used: x
 - [`fixedbugs/issue35291.go`](testdata/fixedbugs/issue35291.go) — line 13: duplicate index 1 in array or slice literal
 - [`fixedbugs/issue4097.go`](testdata/fixedbugs/issue4097.go) — line 10: len(s[len(s) - 1]) (value of type int) is not constant
@@ -335,7 +331,7 @@ Every gc marker is caught by the go/types guard and NONE by Gno's own preprocess
 - [`switch6.go`](testdata/switch6.go) — line 18: impossible type switch case: int
 - [`typeswitch2b.go`](testdata/typeswitch2b.go) — line 16: declared and not used: t
 
-## ⚪ Unsupported — feature gaps (skipped) (826)
+## ⚪ Unsupported — feature gaps (skipped) (828)
 
 Gno can't process the file (unsupported import or language feature). Skipped via t.Skip.
 
@@ -393,6 +389,7 @@ Gno can't process the file (unsupported import or language feature). Skipped via
 - [`deferfin.go`](testdata/deferfin.go) — goroutines not supported in Gno
 - [`deferprint.go`](testdata/deferprint.go) — channels not supported in Gno
 - [`devirt.go`](testdata/devirt.go) — gc optimization-diagnostic errorcheck (-0/-m); markers are compiler diagnostics, not errors
+- [`directive.go`](testdata/directive.go) — gc pragma-placement enforcement; //go: directives are inert comments in Gno
 - [`directive2.go`](testdata/directive2.go) — gc pragma-placement enforcement; //go: directives are inert comments in Gno
 - [`embedfunc.go`](testdata/embedfunc.go) — unknown import path embed
 - [`embedvers.go`](testdata/embedvers.go) — unknown import path embed
@@ -549,6 +546,7 @@ Gno can't process the file (unsupported import or language feature). Skipped via
 - [`fixedbugs/issue15747.go`](testdata/fixedbugs/issue15747.go) — Gno doesn't perform gc's liveness analysis; it accepts this file (gc rejects it), so there's no error to pin.
 - [`fixedbugs/issue16016.go`](testdata/fixedbugs/issue16016.go) — goroutines not supported in Gno
 - [`fixedbugs/issue16037_run.go`](testdata/fixedbugs/issue16037_run.go) — unknown import path html/template
+- [`fixedbugs/issue16130.go`](testdata/fixedbugs/issue16130.go) — unsupported stdlib symbol in Gno: Error
 - [`fixedbugs/issue16241_64.go`](testdata/fixedbugs/issue16241_64.go) — unknown import path sync/atomic
 - [`fixedbugs/issue16241.go`](testdata/fixedbugs/issue16241.go) — unknown import path sync/atomic
 - [`fixedbugs/issue16306.go`](testdata/fixedbugs/issue16306.go) — unknown import path unsafe
@@ -1166,9 +1164,9 @@ Gno can't process the file (unsupported import or language feature). Skipped via
 - [`writebarrier.go`](testdata/writebarrier.go) — unknown import path unsafe
 - [`zerodivide.go`](testdata/zerodivide.go) — uintptr type not supported in Gno
 
-## ✅ Clean — verified (949)
+## ✅ Clean — verified (951)
 
-Gno's behavior is pinned and matches; no outstanding issue. Composition (invariants re-checked at each regen): 387 run/both-silent, 21 run/matching-output, 231 errorcheck/full-marker-coverage-with-Gno, 306 compile/all-checkers-accept, 4 other modes.
+Gno's behavior is pinned and matches; no outstanding issue. Composition (invariants re-checked at each regen): 387 run/both-silent, 21 run/matching-output, 233 errorcheck/full-marker-coverage-with-Gno, 306 compile/all-checkers-accept, 4 other modes.
 
 - [`alias.go`](testdata/alias.go)
 - [`alias1.go`](testdata/alias1.go)
@@ -1519,6 +1517,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue11370.go`](testdata/fixedbugs/issue11370.go)
 - [`fixedbugs/issue11371.go`](testdata/fixedbugs/issue11371.go)
 - [`fixedbugs/issue11590.go`](testdata/fixedbugs/issue11590.go)
+- [`fixedbugs/issue11610.go`](testdata/fixedbugs/issue11610.go)
 - [`fixedbugs/issue11610a.go`](testdata/fixedbugs/issue11610a.go)
 - [`fixedbugs/issue11750.go`](testdata/fixedbugs/issue11750.go)
 - [`fixedbugs/issue11790.go`](testdata/fixedbugs/issue11790.go)
@@ -1840,6 +1839,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue47771.go`](testdata/fixedbugs/issue47771.go)
 - [`fixedbugs/issue4785.go`](testdata/fixedbugs/issue4785.go)
 - [`fixedbugs/issue48033.go`](testdata/fixedbugs/issue48033.go)
+- [`fixedbugs/issue48097.go`](testdata/fixedbugs/issue48097.go)
 - [`fixedbugs/issue48301.go`](testdata/fixedbugs/issue48301.go)
 - [`fixedbugs/issue48459.go`](testdata/fixedbugs/issue48459.go)
 - [`fixedbugs/issue48473.go`](testdata/fixedbugs/issue48473.go)

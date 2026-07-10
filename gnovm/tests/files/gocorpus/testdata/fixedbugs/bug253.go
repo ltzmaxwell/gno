@@ -28,6 +28,9 @@ func main() {
 	}
 }
 
+
+// Fixing: PR #5721 (fix/method40, BFS embedded lookup); candidate, unverified.
+
 // GnoOutput:
 
 // GnoError:
@@ -36,4 +39,4 @@ func main() {
 // GoOutput:
 
 // KnownIssue:
-// TODO: explain the Gno bug (Gno errors where Go runs clean)
+// Promoted field s4.i through embedded S3{S1,S2} not resolved — embedded-lookup depth bug.

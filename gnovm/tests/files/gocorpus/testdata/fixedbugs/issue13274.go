@@ -15,6 +15,3 @@ var f = func() { // ERROR "unexpected EOF|expected .*}.*"
 
 // GnoOverStrictError:
 // line 13: expected '(', found main
-
-// UncaughtError:
-// line 11: uncaught; gc expects: unexpected EOF|expected .*}.*

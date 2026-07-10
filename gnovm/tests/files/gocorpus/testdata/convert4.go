@@ -107,6 +107,9 @@ func init() {
 	}
 }
 
+
+// Fixing: PR #5599 (slice-to-array conversion); candidate, unverified.
+
 // GnoOutput:
 
 // GnoError:
@@ -115,4 +118,4 @@ func init() {
 // GoOutput:
 
 // KnownIssue:
-// TODO: explain the Gno bug (Gno errors where Go runs clean)
+// Slice→array-pointer conversion (*[5]string)(ss) rejected; same family as issue54467.
