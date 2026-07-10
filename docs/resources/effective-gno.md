@@ -690,11 +690,17 @@ users.Iterate("bob", "charlie", func(name string, value any) bool {
 })
 
 // Get a specific user (O(log n))
-value, exists := users.Get("alice")
-if !exists {
+// Get returns nil if the key does not exist
+value := users.Get("alice")
+if value == nil {
 	return nil
 }
 return value.(*User)
+
+// Check if a key exists without retrieving the value
+if users.Has("alice") {
+	// key exists
+}
 
 // Multi-index example - search the same data in different ways
 var (
@@ -885,9 +891,15 @@ import (
 )
 
 var (
-	Token, privateLedger = grc20.NewToken("Foo Token", "FOO", 4)
-	UserTeller           = Token.CallerTeller()
+	Token         *grc20.Token
+	privateLedger *grc20.PrivateLedger
+	UserTeller    grc20.Teller
 )
+
+func init(cur realm) {
+	Token, privateLedger = grc20.NewToken(0, cur, "Foo Token", "FOO", 4)
+	UserTeller = Token.CallerTeller()
+}
 
 func MyBalance(_ realm) int64 {
 	caller := runtime.PreviousRealm().Address()

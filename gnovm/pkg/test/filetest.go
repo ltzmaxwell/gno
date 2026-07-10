@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,7 +40,7 @@ import (
 // [*SkipError] whose Reason carries the directive's payload. The
 // caller (e.g. the TestFiles walker) is expected to detect this with
 // [errors.As] and convert it to a `t.Skip(reason)`.
-func (opts *TestOptions) RunFiletest(fname string, source []byte, tgs gno.Store) (string, types.Gas, error) {
+func (opts *TestOptions) RunFiletest(fname string, source []byte, tgs gno.Store) (string, types.Gas, gno.StorageDiffs, error) {
 	opts.outWriter.w = opts.Output
 	opts.outWriter.errW = opts.Error
 	tcheck := true // Go type-check filetests in test/files.
@@ -64,10 +65,10 @@ func (e *SkipError) Error() string { return "skipped: " + e.Reason }
 // (cmd/gno/test.go) already type-checked the whole package.
 // Go type-checking in filetests is only available for gnovm internal filetests
 // in test/files.
-func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store, tcheck bool) (newContent string, gas types.Gas, retErr error) {
+func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store, tcheck bool) (newContent string, gas types.Gas, sdiffs gno.StorageDiffs, retErr error) {
 	dirs, err := ParseDirectives(bytes.NewReader(source))
 	if err != nil {
-		return "", 0, fmt.Errorf("error parsing directives: %w", err)
+		return "", 0, nil, fmt.Errorf("error parsing directives: %w", err)
 	}
 
 	// Unsupported short-circuit: declared via a top-level
@@ -75,7 +76,7 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 	// the walker turns into t.Skip. Checked before any dispatch /
 	// rescue / machine construction so unsupported files cost nothing.
 	if u := dirs.First(DirectiveUnsupported); u != nil {
-		return "", 0, &SkipError{Reason: u.Content}
+		return "", 0, nil, &SkipError{Reason: u.Content}
 	}
 
 	// Capture the `// GnoError:` golden block and `// GnoStaticIncomplete:`
@@ -171,12 +172,12 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 			if len(errorcheckMarkers) == 0 {
 				reason := "errorcheck marker on a non-code line (e.g. pragma comment); not checkable by the harness"
 				if opts.Sync {
-					return writeUnsupportedDirective(originalSource, reason), 0, nil
+					return writeUnsupportedDirective(originalSource, reason), 0, nil, nil
 				}
-				return "", 0, &SkipError{Reason: reason}
+				return "", 0, nil, &SkipError{Reason: reason}
 			}
 			if err := prependRescue(); err != nil {
-				return "", 0, err
+				return "", 0, nil, err
 			}
 		case CorpusDirective(source) == "compile" && !hasErrorDir && !hasTypeCheckErrorDir:
 			// `// compile`: gc compiles but never runs it. Preprocess
@@ -184,11 +185,11 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 			// Gno + go/types accept it. Takes precedence over run-mode.
 			compileMode = true
 			if err := prependRescue(); err != nil {
-				return "", 0, err
+				return "", 0, nil, err
 			}
 		case !IsRunnable(source) && !hasErrorDir && !hasTypeCheckErrorDir:
 			if err := prependRescue(); err != nil {
-				return "", 0, err
+				return "", 0, nil, err
 			}
 		default:
 			// Runnable .go corpus file: symmetric Gno-vs-Go.
@@ -204,7 +205,7 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 	if isGoRunMode {
 		out, _, runErr := runGoToolchain(source)
 		if runErr != nil {
-			return "", 0, fmt.Errorf("filetest %s: cannot run via Go toolchain "+
+			return "", 0, nil, fmt.Errorf("filetest %s: cannot run via Go toolchain "+
 				"(install go, or mark file `// Unsupported:`): %w", fname, runErr)
 		}
 		goStdout = out
@@ -237,13 +238,19 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 	pkgPath := dirs.FirstDefault(DirectivePkgPath, "main")
 	coins, err := std.ParseCoins(dirs.FirstDefault(DirectiveSend, ""))
 	if err != nil {
-		return "", 0, err
+		return "", 0, nil, err
 	}
 	ctx := Context("", pkgPath, coins)
 	maxAllocRaw := dirs.FirstDefault(DirectiveMaxAlloc, "0")
 	maxAlloc, err := strconv.ParseInt(maxAllocRaw, 10, 64)
 	if err != nil {
-		return "", 0, fmt.Errorf("could not parse MAXALLOC directive: %w", err)
+		return "", 0, nil, fmt.Errorf("could not parse MAXALLOC directive: %w", err)
+	}
+	// Force a non-nil allocator so interrealm v2 Phase 2 PkgID stamping
+	// fires under filetests the same way it does in production. MAXALLOC
+	// directive remains the override for tests that want a specific cap.
+	if maxAlloc == 0 {
+		maxAlloc = math.MaxInt64
 	}
 
 	var opslog io.Writer
@@ -325,9 +332,9 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 		if reason != "" {
 			if opts.Sync {
 				return writeUnsupportedDirective(originalSource, reason),
-					m.GasMeter.GasConsumed(), nil
+					m.GasMeter.GasConsumed(), nil, nil
 			}
-			return "", m.GasMeter.GasConsumed(), &SkipError{Reason: reason}
+			return "", m.GasMeter.GasConsumed(), nil, &SkipError{Reason: reason}
 		}
 	}
 
@@ -364,7 +371,7 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 		// files). We only need go-build evidence to distinguish "real
 		// Gno bug" from "both reject" when Gno rejects.
 		if len(gnoErr) == 0 && len(goTC) == 0 {
-			return "", gas, nil // Clean — everyone accepts
+			return "", gas, nil, nil // Clean — everyone accepts
 		}
 		var goBuildErr map[int]string
 		if len(gnoErr) > 0 {
@@ -411,8 +418,11 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 			})
 		}
 		newContent, err := opts.resolveErrorcheckGolden(originalSource, origDirs, sections)
-		return newContent, gas, err
+		return newContent, gas, nil, err
 	}
+
+	// Collect storage diffs after test execution.
+	storageDiffs := m.Store.RealmStorageDiffs()
 
 	// updated tells whether the directives have been mutated and the
 	// regenerated filetest should be returned (only true under
@@ -469,9 +479,9 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 			}
 			if reason != "" {
 				if opts.Sync {
-					return writeUnsupportedDirective(originalSource, reason), gas, nil
+					return writeUnsupportedDirective(originalSource, reason), gas, nil, nil
 				}
-				return "", gas, &SkipError{Reason: reason}
+				return "", gas, nil, &SkipError{Reason: reason}
 			}
 		}
 		// checkable = the markers that are part of Gno's contract.
@@ -489,9 +499,9 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 		if len(checkable) == 0 {
 			reason := "only gc-specific (GC_ERROR) markers; not part of Gno's contract"
 			if opts.Sync {
-				return writeUnsupportedDirective(originalSource, reason), gas, nil
+				return writeUnsupportedDirective(originalSource, reason), gas, nil, nil
 			}
-			return "", gas, &SkipError{Reason: reason}
+			return "", gas, nil, &SkipError{Reason: reason}
 		}
 		// Pragma-placement enforcement tests: every checkable marker
 		// asserts gc's "misplaced compiler directive" — //go: pragmas
@@ -513,9 +523,9 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 		if allPragma {
 			reason := "gc pragma-placement enforcement; //go: directives are inert comments in Gno"
 			if opts.Sync {
-				return writeUnsupportedDirective(originalSource, reason), gas, nil
+				return writeUnsupportedDirective(originalSource, reason), gas, nil, nil
 			}
-			return "", gas, &SkipError{Reason: reason}
+			return "", gas, nil, &SkipError{Reason: reason}
 		}
 
 		// Evidence vs verdict, set-relation model:
@@ -574,7 +584,7 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 			{name: DirectiveKnownIssue, block: ""},
 		}
 		newContent, err := opts.resolveErrorcheckGolden(originalSource, origDirs, sections)
-		return newContent, gas, err
+		return newContent, gas, nil, err
 	}
 
 	// returnErr is used as the return value, and may be a MultiError if
@@ -623,7 +633,7 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 					Content: "",
 				})
 			} else {
-				return "", m.GasMeter.GasConsumed(), fmt.Errorf("unexpected panic: %s\noutput:\n%s\nstacktrace:\n%s\nstack:\n%v",
+				return "", m.GasMeter.GasConsumed(), storageDiffs, fmt.Errorf("unexpected panic: %s\noutput:\n%s\nstacktrace:\n%s\nstack:\n%v",
 					result.Error, result.Output, result.GnoStacktrace, string(result.GoPanicStack))
 			}
 		}
@@ -636,16 +646,16 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 					Content: "",
 				})
 			} else {
-				return "", m.GasMeter.GasConsumed(), fmt.Errorf("unexpected output:\n%s", result.Output)
+				return "", m.GasMeter.GasConsumed(), storageDiffs, fmt.Errorf("unexpected output:\n%s", result.Output)
 			}
 		}
 	} else if !isGoRunMode {
 		err = m.CheckEmpty()
 		if err != nil {
-			return "", m.GasMeter.GasConsumed(), fmt.Errorf("machine not empty after main: %w", err)
+			return "", m.GasMeter.GasConsumed(), storageDiffs, fmt.Errorf("machine not empty after main: %w", err)
 		}
 		if gno.HasDebugErrors() {
-			return "", m.GasMeter.GasConsumed(), fmt.Errorf("got unexpected debug error(s): %v", gno.GetDebugErrors())
+			return "", m.GasMeter.GasConsumed(), storageDiffs, fmt.Errorf("got unexpected debug error(s): %v", gno.GetDebugErrors())
 		}
 	}
 
@@ -674,7 +684,7 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 		case DirectivePreprocessed:
 			pn := m.Store.GetBlockNodeSafe(gno.PackageNodeLocation(pkgPath))
 			if pn == nil {
-				return "", m.GasMeter.GasConsumed(), fmt.Errorf("package %q not preprocessed: %s", pkgPath, result.Error)
+				return "", m.GasMeter.GasConsumed(), storageDiffs, fmt.Errorf("package %q not preprocessed: %s", pkgPath, result.Error)
 			}
 			pre := pn.(*gno.PackageNode).FileSet.Files[0].String()
 			match(dir, pre)
@@ -720,10 +730,10 @@ func (opts *TestOptions) runFiletest(fname string, source []byte, tgs gno.Store,
 	}
 
 	if updated { // only true if sync == true
-		return dirs.FileTest(), m.GasMeter.GasConsumed(), returnErr
+		return dirs.FileTest(), m.GasMeter.GasConsumed(), storageDiffs, returnErr
 	}
 
-	return "", m.GasMeter.GasConsumed(), returnErr
+	return "", m.GasMeter.GasConsumed(), storageDiffs, returnErr
 }
 
 // goldenSection is one named per-line golden block (`// GnoError:` or
@@ -1289,7 +1299,7 @@ func prettyTypeJSON(jstr []byte) []byte {
 }
 
 // returns a sorted string representation of realm diffs map
-func realmDiffsString(m map[string]int64) string {
+func realmDiffsString(m gno.StorageDiffs) string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
@@ -1347,7 +1357,10 @@ type runResult struct {
 // All compile/type errors are caught during preprocess, so the verdict
 // is unaffected.
 func (opts *TestOptions) runTest(m *gno.Machine, pkgPath, fname string, content []byte, opslog io.Writer, tcheck, preprocessOnly bool) (rr runResult) {
-	pkgName := gno.Name(pkgPath[strings.LastIndexByte(pkgPath, '/')+1:])
+	pkgName, err := gno.PackageNameFromFileBody(fname, string(content))
+	if err != nil {
+		return runResult{Error: err.Error()}
+	}
 	tcError := ""
 	fname = filepath.Base(fname)
 	if opts.tcCache == nil {
@@ -1400,6 +1413,12 @@ func (opts *TestOptions) runTest(m *gno.Machine, pkgPath, fname string, content 
 			}
 		}
 	}()
+
+	// Validate that package name matches path last element.
+	// See https://github.com/gnolang/gno/issues/1571
+	if err := gno.ValidatePkgNameMatchesPath(pkgName, pkgPath); err != nil {
+		panic(err)
+	}
 
 	// Remove filetest from name, as that can lead to the package not being
 	// parsed correctly when using RunMemPackage.
@@ -1479,6 +1498,12 @@ func (opts *TestOptions) runTest(m *gno.Machine, pkgPath, fname string, content 
 				tcError = restoreGoExtInError(fname, fmt.Sprintf("%v", err.Error()))
 			}
 		}
+		// Set OriginCaller BEFORE running package init so package-level
+		// var initializers that read runtime.OriginCaller() (e.g. `var c
+		// = runtime.OriginCaller()` at package scope) see the proper
+		// DefaultCaller, matching the package-main path's ordering above.
+		m.Context.(*teststdlibs.TestExecContext).OriginCaller = DefaultCaller
+
 		// Run decls and init functions.
 		m.RunMemPackage(mpkg, true)
 
@@ -1489,7 +1514,6 @@ func (opts *TestOptions) runTest(m *gno.Machine, pkgPath, fname string, content 
 		m.Store = orig
 		pv2 := m.Store.GetPackage(pkgPath, false)
 		m.SetActivePackage(pv2)
-		m.Context.(*teststdlibs.TestExecContext).OriginCaller = DefaultCaller
 		gno.EnableDebug()
 
 		// Clear store.opslog from init function(s).
