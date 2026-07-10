@@ -63,9 +63,18 @@ func foo6() (T, string) {
 // line 20: expected declaration, found '}'
 // line 21: expected 4 return values
 // line 22: expected declaration, found '}'
+// line 24: 2: [function "foo4" does not terminate]
+// line 25: expected declaration, found 'switch'
+// line 26: expected declaration, found 'case'
 // line 27: expected 2 return values
-// line 29: expected 2 return values
-// line 31: expected 2 return values
+// line 28: expected declaration, found 'case'
+// line 29: expected declaration, found 'return'
+// line 30: expected declaration, found 'case'
+// line 31: expected declaration, found 'return'
+// line 32: expected declaration, found 'default'
+// line 33: expected declaration, found 'return'
+// line 34: expected declaration, found '}'
+// line 35: expected declaration, found '}'
 // line 41: 2: [function "foo5" does not terminate]
 // line 42: expected declaration, found 'if'
 // line 43: expected 3 return values
@@ -74,10 +83,6 @@ func foo6() (T, string) {
 // line 46: expected 3 return values
 // line 47: expected declaration, found '}'
 // line 48: imaginaries are not supported
-// line 49: expected declaration, found '}'
-// line 51: 2: [function "foo6" does not terminate]
-// line 52: expected 2 return values
-// line 53: expected declaration, found '}'
 
 // GoTypeCheckError:
 // line 10: not enough return values
@@ -121,11 +126,17 @@ func foo6() (T, string) {
 // line 18: expected declaration, found 'if'
 // line 20: expected declaration, found '}'
 // line 22: expected declaration, found '}'
+// line 24: 2: [function "foo4" does not terminate]
+// line 25: expected declaration, found 'switch'
+// line 26: expected declaration, found 'case'
+// line 28: expected declaration, found 'case'
+// line 30: expected declaration, found 'case'
+// line 32: expected declaration, found 'default'
+// line 33: expected declaration, found 'return'
+// line 34: expected declaration, found '}'
+// line 35: expected declaration, found '}'
 // line 41: 2: [function "foo5" does not terminate]
 // line 42: expected declaration, found 'if'
 // line 44: expected declaration, found '}'
 // line 45: expected declaration, found ptr
 // line 47: expected declaration, found '}'
-// line 49: expected declaration, found '}'
-// line 51: 2: [function "foo6" does not terminate]
-// line 53: expected declaration, found '}'

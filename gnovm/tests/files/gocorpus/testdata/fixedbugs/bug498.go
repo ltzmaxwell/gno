@@ -24,10 +24,4 @@ func main() {
 
 // GnoOutput:
 
-// GnoError:
-// 1
-
 // GoOutput:
-
-// KnownIssue:
-// TODO: explain the Gno bug (Gno errors where Go runs clean)

@@ -40,13 +40,4 @@ func main() {
 
 // GnoOutput:
 
-// GnoError:
-// runtime error: nil pointer dereference
-// 	string doesn't implement interface {Error func() string} (missing method Error)
-
 // GoOutput:
-
-// KnownIssue:
-// Runtime panics carry a bare string, so recover().(error) fails — Go
-// runtime panics implement error (runtime.Error). The nil-receiver wrapper
-// panic text also differs from gc's.

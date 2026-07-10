@@ -58,13 +58,4 @@ func shouldPanic(str string, f func()) {
 
 // GnoOutput:
 
-// GnoError:
-// runtime error: makeslice: cap out of range
-// 	string doesn't implement interface {Error func() string} (missing method Error)
-
 // GoOutput:
-
-// KnownIssue:
-// The makeslice panic messages already match Go, but the panic value is a
-// bare string, so recover().(error) fails ("string doesn't implement
-// interface"). Same root cause as fixedbugs/issue19040.go.

@@ -74,12 +74,4 @@ func shouldPanic(x func()) {
 
 // GnoOutput:
 
-// GnoError:
-// runtime error: invalid memory address or nil pointer dereference
-
 // GoOutput:
-
-// KnownIssue:
-// Calling a nil func value (h(nil, nil)) raised an unrecoverable host
-// nil-pointer dereference instead of a recoverable Gno panic, so
-// shouldPanic's recover() never fired.

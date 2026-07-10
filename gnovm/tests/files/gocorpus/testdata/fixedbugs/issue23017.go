@@ -117,12 +117,4 @@ func check(want, got int) {
 
 // GnoOutput:
 
-// GnoError:
-// wanted 1, but got 0
-
 // GoOutput:
-
-// KnownIssue:
-// Tuple assignment didn't follow Go's order: LHS operands must be resolved
-// in-place before assigning left-to-right, so a panicking operand (nil map
-// write, nil deref) must not prevent earlier assignments from landing.

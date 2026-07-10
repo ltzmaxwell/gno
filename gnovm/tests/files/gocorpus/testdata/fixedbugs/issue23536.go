@@ -26,11 +26,4 @@ func main() {
 
 // GnoOutput:
 
-// GnoError:
-// interface conversion: gnolang.Value is nil, not *gnolang.SliceValue
-
 // GoOutput:
-
-// KnownIssue:
-// Converting a nil slice of a named byte/rune type to string crashed the
-// VM: the nil slice's Value was asserted to *SliceValue without a nil check.

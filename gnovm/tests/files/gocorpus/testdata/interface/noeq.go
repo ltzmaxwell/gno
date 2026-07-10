@@ -44,12 +44,4 @@ func shouldPanic(f func()) {
 
 // GnoOutput:
 
-// GnoError:
-// function should panic
-
 // GoOutput:
-
-// KnownIssue:
-// Comparing interface values with uncomparable dynamic types (map, func,
-// struct containing a slice) returned false instead of panicking at
-// runtime. Same root cause as fixedbugs/issue8606.go.

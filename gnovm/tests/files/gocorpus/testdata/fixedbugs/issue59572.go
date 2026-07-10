@@ -33,16 +33,11 @@ var list = []func(){
 // Fixed: master PR #5764 (98f4db57c); verified 1/2/3 output, broken at parent; re-golden after rebase.
 
 // GnoOutput:
-
-// GnoError:
-// runtime error: invalid memory address or nil pointer dereference
+// 1
+// 2
+// 3
 
 // GoOutput:
 // 1
 // 2
 // 3
-
-// KnownIssue:
-// for _, fn = range (blank key, assignment to an outer var) crashed
-// preprocess with a nil-type deref on the blank operand — the nil-iff-blank
-// range-operand handling. Same root cause as fixedbugs/bug406.go.

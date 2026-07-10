@@ -13,6 +13,11 @@ func main() {
 	_ = append(nil, 1, 2, 3) // ERROR "untyped nil|nil"
 }
 
+// GnoError:
+// line 10: use of untyped nil in assignment
+// line 11: use of untyped nil in assignment
+// line 12: use of untyped nil in assignment
+
 // GoTypeCheckError:
 // line 10: use of untyped nil in assignment to _ identifier
 // line 11: use of untyped nil in assignment to _ identifier

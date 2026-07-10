@@ -46,8 +46,22 @@ var x = []interface{}{
 	float64(-max64 - ulp64/2),                  // ERROR "constant -1\.79769e\+308 overflows float64|cannot convert.*to type float64"
 }
 
+// GnoError:
+// line 30: cannot convert untyped bigdec to float32 -- too close to +-Inf
+// line 31: cannot convert untyped bigdec to float32 -- too close to +-Inf
+// line 32: cannot convert untyped bigdec to float32 -- too close to +-Inf
+// line 34: cannot convert untyped bigdec to float32 -- too close to +-Inf
+// line 35: cannot convert untyped bigdec to float32 -- too close to +-Inf
+// line 36: cannot convert untyped bigdec to float32 -- too close to +-Inf
+
 // GoTypeCheckError:
 // line 32: cannot convert max32 + ulp32 / 2 (untyped float constant 3.40282e+38) to type float32
 // line 36: cannot convert -max32 - ulp32 / 2 (untyped float constant -3.40282e+38) to type float32
 // line 42: cannot convert max64 + ulp64 / 2 (untyped float constant 1.79769e+308) to type float64
 // line 46: cannot convert -max64 - ulp64 / 2 (untyped float constant -1.79769e+308) to type float64
+
+// GnoOverStrictError:
+// line 30: cannot convert untyped bigdec to float32 -- too close to +-Inf
+// line 31: cannot convert untyped bigdec to float32 -- too close to +-Inf
+// line 34: cannot convert untyped bigdec to float32 -- too close to +-Inf
+// line 35: cannot convert untyped bigdec to float32 -- too close to +-Inf

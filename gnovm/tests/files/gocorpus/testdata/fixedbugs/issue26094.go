@@ -54,7 +54,7 @@ func main() {
 // GnoOutput:
 
 // GnoError:
-// undefined
+// main[main/issue26094.go:23:1-26:2].T is not of type main[main/issue26094.go:28:1-32:2].T
 
 // GoOutput:
 

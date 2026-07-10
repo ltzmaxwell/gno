@@ -55,18 +55,18 @@ func f() {
 }
 
 // GnoError:
-// line 16: channel receive is not permitted
-// line 18: channel receive is not permitted
-// line 19: channel receive is not permitted
-// line 20: channel receive is not permitted
-// line 21: channel receive is not permitted
-// line 22: channel receive is not permitted
-// line 24: channel receive is not permitted
-// line 25: channel receive is not permitted
-// line 26: channel receive is not permitted
-// line 27: channel receive is not permitted
-// line 29: channel receive is not permitted
-// line 30: channel receive is not permitted
+// line 16: channels are not permitted
+// line 18: channels are not permitted
+// line 19: channels are not permitted
+// line 20: channels are not permitted
+// line 21: channels are not permitted
+// line 22: channels are not permitted
+// line 24: channels are not permitted
+// line 25: channels are not permitted
+// line 26: channels are not permitted
+// line 27: channels are not permitted
+// line 29: channels are not permitted
+// line 30: channels are not permitted
 // line 50: expected 'chan', found '<-' (and 3 more errors)
 // line 51: expected 'chan' (and 2 more errors)
 // line 53: expected 'chan', found int (and 1 more errors)
@@ -79,15 +79,15 @@ func f() {
 // line 54: expected channel type
 
 // GnoOverStrictError:
-// line 16: channel receive is not permitted
-// line 18: channel receive is not permitted
-// line 19: channel receive is not permitted
-// line 20: channel receive is not permitted
-// line 21: channel receive is not permitted
-// line 22: channel receive is not permitted
-// line 24: channel receive is not permitted
-// line 25: channel receive is not permitted
-// line 26: channel receive is not permitted
-// line 27: channel receive is not permitted
-// line 29: channel receive is not permitted
-// line 30: channel receive is not permitted
+// line 16: channels are not permitted
+// line 18: channels are not permitted
+// line 19: channels are not permitted
+// line 20: channels are not permitted
+// line 21: channels are not permitted
+// line 22: channels are not permitted
+// line 24: channels are not permitted
+// line 25: channels are not permitted
+// line 26: channels are not permitted
+// line 27: channels are not permitted
+// line 29: channels are not permitted
+// line 30: channels are not permitted

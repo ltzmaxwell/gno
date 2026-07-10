@@ -39,7 +39,7 @@ func shouldPanic(str string, f func()) {
 // GnoOutput:
 
 // GnoError:
-// multiplication overflow
+// runtime error: makeslice: len out of range
 
 // GoOutput:
 

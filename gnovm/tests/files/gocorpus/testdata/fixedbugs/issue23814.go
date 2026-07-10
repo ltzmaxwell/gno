@@ -65,12 +65,4 @@ func main() {
 
 // GnoOutput:
 
-// GnoError:
-// interface conversion: gnolang.Value is nil, not *gnolang.SliceValue
-
 // GoOutput:
-
-// KnownIssue:
-// string([]byte(nil)) / string([]rune(nil)) crashed the VM: the nil slice's
-// Value was asserted to *SliceValue without a nil check. Same root cause as
-// fixedbugs/issue23536.go; the rest of the spec-example conversions pass.

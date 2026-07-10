@@ -15,6 +15,11 @@ var (
 	c = iota  // ERROR "undefined: iota|iota is only defined in const|cannot use iota outside constant declaration"
 )
 
+// GnoError:
+// line 13: cannot use iota outside constant declaration
+// line 14: cannot use iota outside constant declaration
+// line 15: cannot use iota outside constant declaration
+
 // GoTypeCheckError:
 // line 13: cannot use iota outside constant declaration
 // line 14: cannot use iota outside constant declaration

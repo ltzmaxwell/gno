@@ -24,8 +24,16 @@ const (
 
 // GnoError:
 // line 15: bigint overflows target kind
+// line 19: cannot use iota outside constant declaration
+// line 20: assignment mismatch: 1 variable(s) but 0 value(s)
+// line 21: assignment mismatch: 1 variable(s) but 0 value(s)
+// line 22: assignment mismatch: 1 variable(s) but 0 value(s)
 
 // GoTypeCheckError:
 // line 15: constant 256 overflows byte
 // line 21: invalid array length 1 - iota (untyped int constant -1)
 // line 22: invalid array length 1 - iota (untyped int constant -2)
+
+// GnoOverStrictError:
+// line 19: cannot use iota outside constant declaration
+// line 20: assignment mismatch: 1 variable(s) but 0 value(s)

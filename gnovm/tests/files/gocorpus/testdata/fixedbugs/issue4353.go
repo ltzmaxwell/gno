@@ -23,12 +23,4 @@ func main() {
 
 // GnoOutput:
 
-// GnoError:
-// runtime error: index out of range [100023] with length 100000
-
 // GoOutput:
-
-// KnownIssue:
-// Out-of-range index on a pointer-to-array (paib[i64]) escaped as an
-// unrecoverable VM panic instead of a recoverable runtime panic, so
-// recover() never fired. Same root cause as fixedbugs/issue15252.go.

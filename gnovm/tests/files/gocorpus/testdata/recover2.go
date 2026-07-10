@@ -90,8 +90,7 @@ func test7() {
 // GnoOutput:
 
 // GnoError:
-// runtime error: slice index out of bounds: 123 (len=10)
-// 	string doesn't implement interface {Error func() string} (missing method Error)
+// want: interface; have: int is not of type float32
 
 // GoOutput:
 

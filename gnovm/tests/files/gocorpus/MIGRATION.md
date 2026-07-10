@@ -8,65 +8,35 @@ do not edit by hand; re-run after `--update-golden-tests`.
 
 | Bucket | Count | Meaning |
 |---|--:|---|
-| 🔥 **Urgent KnownIssue** | 53 | runtime divergence — Gno's run result differs from Go's (wrong value, or panic where Go succeeds); ships past deploy, breaks in production; **fix now** |
+| 🔥 **Urgent KnownIssue** | 23 | runtime divergence — Gno's run result differs from Go's (wrong value, or panic where Go succeeds); ships past deploy, breaks in production; **fix now** |
 | 🕳️ **Uncaught leak** | 17 | gc-invalid code caught by NEITHER Gno preprocess nor go/types — would deploy; under-rejection, **fix now** |
-| 🟠 **Over-strict** | 158 | Gno rejects code gc *and* go/types accept (static; caught at deploy, no inconsistent state — fix deferred) |
-| 🔵 KnownDivergence | 47 | accepted run-mode difference (not a bug) |
-| 🛡️ Permissive-GuardOnly | 62 | Gno preprocess accepts; the go/types guard alone rejects — holds in production, but is the native-coverage worklist for go/types removal |
+| 🟠 **Over-strict** | 159 | Gno rejects code gc *and* go/types accept (static; caught at deploy, no inconsistent state — fix deferred) |
+| 🔵 KnownDivergence | 40 | accepted run-mode difference (not a bug) |
+| 🛡️ Permissive-GuardOnly | 54 | Gno preprocess accepts; the go/types guard alone rejects — holds in production, but is the native-coverage worklist for go/types removal |
 | ⚪ Unsupported | 826 | feature gap (unsupported import / language feature); skipped |
-| ✅ Clean | 905 | verified, no outstanding issue |
+| ✅ Clean | 949 | verified, no outstanding issue |
 | **Total migrated** | 2068 | |
 
-## 🔥 Urgent KnownIssue — runtime divergence (fix now) (53)
+## 🔥 Urgent KnownIssue — runtime divergence (fix now) (23)
 
 Gno's run-mode result differs from Go's — a wrong value, or a panic where Go succeeds (e.g. bug446: init-order panic). Unlike static rejects (caught at deploy), these ship and break in production, so they're the must-fix subset. Read each file's pinned // GnoOutput:/// GnoError: vs // GoOutput: to identify the bug. Many files share a root cause; sub-triage (engine panic vs semantic bug vs misrouted feature-gap) is done by reading the behavior.
 
 - [`bigmap.go`](testdata/bigmap.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
 - [`closure2.go`](testdata/closure2.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`closure4.go`](testdata/closure4.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
 - [`convert4.go`](testdata/convert4.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
 - [`ddd.go`](testdata/ddd.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
 - [`directive.go`](testdata/directive.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
 - [`fixedbugs/bug253.go`](testdata/fixedbugs/bug253.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
 - [`fixedbugs/bug336.go`](testdata/fixedbugs/bug336.go) — Engine panic root cause FIXED on branch `fix/decltype_mutual` (off master):
-- [`fixedbugs/bug406.go`](testdata/fixedbugs/bug406.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/bug434.go`](testdata/fixedbugs/bug434.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/bug446.go`](testdata/fixedbugs/bug446.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/bug454.go`](testdata/fixedbugs/bug454.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/bug483.go`](testdata/fixedbugs/bug483.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
 - [`fixedbugs/bug485.go`](testdata/fixedbugs/bug485.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/bug498.go`](testdata/fixedbugs/bug498.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/bug500.go`](testdata/fixedbugs/bug500.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/issue11286.go`](testdata/fixedbugs/issue11286.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/issue12621.go`](testdata/fixedbugs/issue12621.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/issue14591.go`](testdata/fixedbugs/issue14591.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
 - [`fixedbugs/issue15039.go`](testdata/fixedbugs/issue15039.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/issue15252.go`](testdata/fixedbugs/issue15252.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/issue15975.go`](testdata/fixedbugs/issue15975.go) — Deferred nil-interface method call escaped as an unrecoverable VM error — ✅ Fixed: master PR #5715 (df91bada8); verified clean, broken at parent; re-golden after rebase.
-- [`fixedbugs/issue16095.go`](testdata/fixedbugs/issue16095.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
 - [`fixedbugs/issue16130.go`](testdata/fixedbugs/issue16130.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/issue16515.go`](testdata/fixedbugs/issue16515.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/issue16760.go`](testdata/fixedbugs/issue16760.go) — Nil-interface method call escaped as an unrecoverable VM error instead — ✅ Fixed: master PR #5715 (df91bada8); verified clean, broken at parent; re-golden after rebase.
-- [`fixedbugs/issue19040.go`](testdata/fixedbugs/issue19040.go) — Runtime panics carry a bare string, so recover().(error) fails — Go — 🚧 Fixing: PR #5732 (fix/5667, typedRuntimeError); verified clean on branch, broken on master; tracks issue #5667; re-golden after merge.
-- [`fixedbugs/issue20029.go`](testdata/fixedbugs/issue20029.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/issue21963.go`](testdata/fixedbugs/issue21963.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
-- [`fixedbugs/issue23017.go`](testdata/fixedbugs/issue23017.go) — Tuple assignment didn't follow Go's order: LHS operands must be resolved — ✅ Fixed: master PR #5790 (7b2888c3b); verified clean, broken at parent; re-golden after rebase.
-- [`fixedbugs/issue23536.go`](testdata/fixedbugs/issue23536.go) — Converting a nil slice of a named byte/rune type to string crashed the — ✅ Fixed: master PR #5780 (5d7ec8679); verified clean, broken at parent; re-golden after rebase.
-- [`fixedbugs/issue23814.go`](testdata/fixedbugs/issue23814.go) — string([]byte(nil)) / string([]rune(nil)) crashed the VM: the nil slice's — ✅ Fixed: master PR #5780 (5d7ec8679); verified clean, broken at parent; re-golden after rebase.
-- [`fixedbugs/issue23837.go`](testdata/fixedbugs/issue23837.go) — Calling a nil func value (h(nil, nil)) raised an unrecoverable host — ✅ Fixed: master PR #5711 (a7e4c34b0, bisected); verified clean, broken at parent; re-golden after rebase.
 - [`fixedbugs/issue24547.go`](testdata/fixedbugs/issue24547.go) — Embedded method lookup mishandles shadowing across depths: Buffer's — 🚧 Fixing: PR #5721 (fix/method40, BFS lookup); verified clean on branch, broken on master; re-golden after merge.
 - [`fixedbugs/issue26094.go`](testdata/fixedbugs/issue26094.go) — Local-type identity is already correct (the assertion fails as it — 🚧 Fixing: PR #5732 (fix/5667, typedRuntimeError); verified on branch (wording gap remains), broken on master; reclassify KnownDivergence after merge.
 - [`fixedbugs/issue29304.go`](testdata/fixedbugs/issue29304.go) — Method expressions on interface types are unsupported: error.Error(err) — 📌 Tracked: issue #5787 (method expressions: interface/promoted/mixed-receiver forms); broken on master, no PR yet.
-- [`fixedbugs/issue37975.go`](testdata/fixedbugs/issue37975.go) — The makeslice panic messages already match Go, but the panic value is a — 🚧 Fixing: PR #5732 (fix/5667, typedRuntimeError); verified clean on branch, broken on master; re-golden after merge.
-- [`fixedbugs/issue4353.go`](testdata/fixedbugs/issue4353.go) — Out-of-range index on a pointer-to-array (paib[i64]) escaped as an — ✅ Fixed: master PR #5738 (1da3a0ff7); verified clean, broken at parent; re-golden after rebase.
 - [`fixedbugs/issue4495.go`](testdata/fixedbugs/issue4495.go) — Method expressions on interface types are unsupported: I.m(t) is — 📌 Tracked: issue #5787 (method expressions: interface/promoted/mixed-receiver forms); broken on master, no PR yet.
-- [`fixedbugs/issue50190.go`](testdata/fixedbugs/issue50190.go) — TODO: explain the Gno bug (Gno errors where Go runs clean) — 🚧 Fixing: #5379
 - [`fixedbugs/issue52072.go`](testdata/fixedbugs/issue52072.go) — defer i.M() on an interface holding nil *T panics when the defer is — 🚧 Fixing: PR #5737 (fix/defer12, call-time dispatch); verified clean on branch, broken on master; re-golden after merge.
-- [`fixedbugs/issue59572.go`](testdata/fixedbugs/issue59572.go) — for _, fn = range (blank key, assignment to an outer var) crashed — ✅ Fixed: master PR #5764 (98f4db57c); verified 1/2/3 output, broken at parent; re-golden after rebase.
-- [`fixedbugs/issue6055.go`](testdata/fixedbugs/issue6055.go) — Deferred nil-interface method call escaped as an unrecoverable VM error — ✅ Fixed: master PR #5715 (df91bada8); verified clean, broken at parent; re-golden after rebase.
-- [`fixedbugs/issue8047.go`](testdata/fixedbugs/issue8047.go) — Deferring a typed-nil func value crashed the VM host-side: the nil — ✅ Fixed: master PR #5722 (49af0f55c); verified clean, broken at parent; re-golden after rebase.
-- [`fixedbugs/issue8606.go`](testdata/fixedbugs/issue8606.go) — Comparing composites holding uncomparable dynamic values (e.g. A{b, 1} — ✅ Fixed: master PR #5713 (5d889b083); verified clean, broken at parent; re-golden after rebase.
-- [`interface/noeq.go`](testdata/interface/noeq.go) — Comparing interface values with uncomparable dynamic types (map, func, — ✅ Fixed: master PR #5713 (5d889b083); verified clean, broken at parent; re-golden after rebase.
+- [`float_lit2.go`](testdata/float_lit2.go) — TODO: explain the Gno bug (Gno errors where Go runs clean)
 - [`ken/embed.go`](testdata/ken/embed.go) — Promoted-field lookup through embedded (pointer) structs fails at — 🚧 Fixing: PR #5721 (fix/method40, BFS lookup); verified clean on branch, broken on master; re-golden after merge.
 - [`map.go`](testdata/map.go) — Map composite-literal keys don't resolve variables declared by an — 📌 Tracked: issue #5910; broken on master, no PR yet.
 - [`method.go`](testdata/method.go) — Mixed-receiver method expressions are unsupported: (*S).val(&s) with a — 📌 Tracked: issue #5787 (method expressions: interface/promoted/mixed-receiver forms); broken on master, no PR yet.
@@ -97,7 +67,7 @@ Checkable (non-GC_ERROR) markers caught by neither Gno's preprocess nor the go/t
 - [`fixedbugs/issue67141.go`](testdata/fixedbugs/issue67141.go) — line 13: uncaught; gc expects: cannot range over 10
 - [`mainsig.go`](testdata/mainsig.go) — line 9: uncaught; gc expects: func main must have no arguments and no return values
 
-## 🟠 Over-strict — Gno-only static rejects (fix deferred) (158)
+## 🟠 Over-strict — Gno-only static rejects (fix deferred) (159)
 
 Gno's preprocess rejects code that both gc (markers) and the go/types guard accept. Only over-rejects otherwise-valid packages (they can't deploy/call) — no inconsistent state — so deferred. Note = human verdict (compile KnownIssue) or the first over-strict line (errorcheck GnoOverStrictError).
 
@@ -129,7 +99,6 @@ Gno's preprocess rejects code that both gc (markers) and the go/types guard acce
 - [`fixedbugs/bug255.go`](testdata/fixedbugs/bug255.go) — line 19: function ff does not have a body but is not natively defined (did you build after pulling from the repository?)
 - [`fixedbugs/bug274.go`](testdata/fixedbugs/bug274.go) — line 24: expected statement, found 'case'
 - [`fixedbugs/bug298.go`](testdata/fixedbugs/bug298.go) — line 9: function Sum does not have a body but is not natively defined (did you build after pulling from the repository?)
-- [`fixedbugs/bug299.go`](testdata/fixedbugs/bug299.go) — line 11: expected declaration, found x
 - [`fixedbugs/bug326.go`](testdata/fixedbugs/bug326.go) — line 21: 2: [function "i" does not terminate]
 - [`fixedbugs/bug349.go`](testdata/fixedbugs/bug349.go) — line 11: 2: [function "foo" does not terminate]
 - [`fixedbugs/bug353.go`](testdata/fixedbugs/bug353.go) — line 18: expected declaration, found 'for'
@@ -148,7 +117,7 @@ Gno's preprocess rejects code that both gc (markers) and the go/types guard acce
 - [`fixedbugs/bug518.go`](testdata/fixedbugs/bug518.go) — line 11: 2: [function "F2" does not terminate]
 - [`fixedbugs/issue11699.go`](testdata/fixedbugs/issue11699.go) — TODO: explain the Gno bug (Gno rejects code gc + go/types accept)
 - [`fixedbugs/issue11737.go`](testdata/fixedbugs/issue11737.go) — line 11: function f does not have a body but is not natively defined (did you build after pulling from the repository?)
-- [`fixedbugs/issue13273.go`](testdata/fixedbugs/issue13273.go) — line 16: channel receive is not permitted
+- [`fixedbugs/issue13273.go`](testdata/fixedbugs/issue13273.go) — line 16: channels are not permitted
 - [`fixedbugs/issue13319.go`](testdata/fixedbugs/issue13319.go) — line 10: name x not declared
 - [`fixedbugs/issue13337.go`](testdata/fixedbugs/issue13337.go) — TODO: explain the Gno bug (Gno rejects code gc + go/types accept)
 - [`fixedbugs/issue13415.go`](testdata/fixedbugs/issue13415.go) — line 13: select statements are not permitted
@@ -223,10 +192,12 @@ Gno's preprocess rejects code that both gc (markers) and the go/types guard acce
 - [`fixedbugs/issue6671.go`](testdata/fixedbugs/issue6671.go) — line 23: cannot use bool as gno.land/p/filetest/p[gno.land/p/filetest/p/issue6671.go:14:1-29:2].mybool without explicit conversion
 - [`fixedbugs/issue7675.go`](testdata/fixedbugs/issue7675.go) — line 11: function f does not have a body but is not natively defined (did you build after pulling from the repository?)
 - [`fixedbugs/issue8042.go`](testdata/fixedbugs/issue8042.go) — TODO: explain the Gno bug (Gno rejects code gc + go/types accept)
+- [`fixedbugs/issue8183.go`](testdata/fixedbugs/issue8183.go) — line 19: cannot use iota outside constant declaration
 - [`fixedbugs/issue8385.go`](testdata/fixedbugs/issue8385.go) — line 27: function g does not have a body but is not natively defined (did you build after pulling from the repository?)
 - [`fixedbugs/issue8507.go`](testdata/fixedbugs/issue8507.go) — line 15: T<VPInvalid(0)> is not a type
 - [`fixedbugs/issue8836.go`](testdata/fixedbugs/issue8836.go) — line 13: function foobar does not have a body but is not natively defined (did you build after pulling from the repository?)
 - [`fixedbugs/issue9432.go`](testdata/fixedbugs/issue9432.go) — line 13: expected declaration, found bar
+- [`float_lit3.go`](testdata/float_lit3.go) — line 30: cannot convert untyped bigdec to float32 -- too close to +-Inf
 - [`func1.go`](testdata/func1.go) — line 18: expected declaration, found 'return'
 - [`func3.go`](testdata/func3.go) — line 20: function f4 does not have a body but is not natively defined (did you build after pulling from the repository?)
 - [`import5.go`](testdata/import5.go) — line 16: unknown import path go/parser
@@ -260,7 +231,7 @@ Gno's preprocess rejects code that both gc (markers) and the go/types guard acce
 - [`typeswitch2.go`](testdata/typeswitch2.go) — line 15: 3: duplicate type int in type switch
 - [`typeswitch3.go`](testdata/typeswitch3.go) — line 41: expected declaration, found '}' (and 4 more errors)
 
-## 🔵 KnownDivergence — accepted run-mode differences (47)
+## 🔵 KnownDivergence — accepted run-mode differences (40)
 
 Gno's output legitimately differs from Go's (formatting, map order, error wording, …); pinned and blessed, not a bug.
 
@@ -296,23 +267,16 @@ Gno's output legitimately differs from Go's (formatting, map order, error wordin
 - [`fixedbugs/issue67255.go`](testdata/fixedbugs/issue67255.go) — pin Go1.17.
 - [`fixedbugs/issue6899.go`](testdata/fixedbugs/issue6899.go) — TODO: <category>: explain why this divergence is acceptable
 - [`fixedbugs/issue71675.go`](testdata/fixedbugs/issue71675.go) — Go1.17 pinned.
-- [`fixedbugs/issue71932.go`](testdata/fixedbugs/issue71932.go) — runtime thing.
 - [`fixedbugs/issue7419.go`](testdata/fixedbugs/issue7419.go) — probaly fix/float9, not representable by apd.
-- [`fixedbugs/issue7550.go`](testdata/fixedbugs/issue7550.go) — see also 29190.
-- [`fixedbugs/issue7944.go`](testdata/fixedbugs/issue7944.go) — probaly runtime thing.
-- [`fixedbugs/issue8132.go`](testdata/fixedbugs/issue8132.go) — runtime thing.
-- [`float_lit2.go`](testdata/float_lit2.go) — TODO: <category>: explain why this divergence is acceptable
 - [`func2.go`](testdata/func2.go) — compile-error-wording: both Gno and Go reject; wording/stage differ
-- [`gc.go`](testdata/gc.go) — runtime thing.
 - [`ken/string.go`](testdata/ken/string.go) — TODO: <category>: explain why this divergence is acceptable
 - [`range3.go`](testdata/range3.go) — Go1.17 pinned.
 - [`run/divergence_panic.go`](testdata/run/divergence_panic.go) — error-wording: same kind of out-of-range panic, different wording in the recovered value.
-- [`stackobj2.go`](testdata/stackobj2.go) — runtime...
 - [`typeparam/issue47966.go`](testdata/typeparam/issue47966.go) — compile-error-wording: both Gno and Go reject; wording/stage differ
 - [`typeparam/issue52124.go`](testdata/typeparam/issue52124.go) — compile-error-wording: both Gno and Go reject; wording/stage differ
 - [`zerosize.go`](testdata/zerosize.go) — see compatible doc.
 
-## 🛡️ Permissive-GuardOnly — Gno accepts, go/types alone rejects (62)
+## 🛡️ Permissive-GuardOnly — Gno accepts, go/types alone rejects (54)
 
 Every gc marker is caught by the go/types guard and NONE by Gno's own preprocess (an empty Gno catch is synced as no GnoError block — absence means lenient, not unsynced). The rejection contract holds in production (guard runs at addpkg), but each file flips to silently-accepted the day the transitional guard is removed — this is the native type_check.go coverage worklist. Note shows the guard's first error.
 
@@ -321,7 +285,6 @@ Every gc marker is caught by the go/types guard and NONE by Gno's own preprocess
 - [`fixedbugs/bug022.go`](testdata/fixedbugs/bug022.go) — line 12: cannot index digits (variable of type *string)
 - [`fixedbugs/bug165.go`](testdata/fixedbugs/bug165.go) — line 14: invalid map key type S
 - [`fixedbugs/bug181.go`](testdata/fixedbugs/bug181.go) — line 10: embedded field type cannot be a pointer
-- [`fixedbugs/bug186.go`](testdata/fixedbugs/bug186.go) — line 15: cannot use iota outside constant declaration
 - [`fixedbugs/bug189.go`](testdata/fixedbugs/bug189.go) — line 16: too few values in struct literal of type S
 - [`fixedbugs/bug192.go`](testdata/fixedbugs/bug192.go) — line 13: fmt already declared through import of package fmt ("fmt")
 - [`fixedbugs/bug231.go`](testdata/fixedbugs/bug231.go) — line 22: cannot use t (variable of struct type T) as I value in assignment: T does not implement I (T.m is a field, not a method)
@@ -330,7 +293,6 @@ Every gc marker is caught by the go/types guard and NONE by Gno's own preprocess
 - [`fixedbugs/bug337.go`](testdata/fixedbugs/bug337.go) — line 17: len("foo") (constant 3 of type int) is not used
 - [`fixedbugs/bug340.go`](testdata/fixedbugs/bug340.go) — line 14: 0 is not a type
 - [`fixedbugs/bug357.go`](testdata/fixedbugs/bug357.go) — line 18: false (untyped bool constant) is not used
-- [`fixedbugs/bug362.go`](testdata/fixedbugs/bug362.go) — line 13: cannot use iota outside constant declaration
 - [`fixedbugs/bug373.go`](testdata/fixedbugs/bug373.go) — line 12: t declared and not used
 - [`fixedbugs/bug379.go`](testdata/fixedbugs/bug379.go) — line 17: 1 + 2 (untyped int constant 3) is not used
 - [`fixedbugs/bug416.go`](testdata/fixedbugs/bug416.go) — line 13: field and method with the same name X
@@ -360,19 +322,13 @@ Every gc marker is caught by the go/types guard and NONE by Gno's own preprocess
 - [`fixedbugs/issue4847.go`](testdata/fixedbugs/issue4847.go) — line 22: initialization cycle for matchAny
 - [`fixedbugs/issue54280.go`](testdata/fixedbugs/issue54280.go) — line 11: constant overflow
 - [`fixedbugs/issue5698.go`](testdata/fixedbugs/issue5698.go) — line 18: invalid map key type Key
-- [`fixedbugs/issue6004.go`](testdata/fixedbugs/issue6004.go) — line 10: use of untyped nil in assignment to _ identifier
-- [`fixedbugs/issue6703c.go`](testdata/fixedbugs/issue6703c.go) — line 18: initialization cycle for x
-- [`fixedbugs/issue6703d.go`](testdata/fixedbugs/issue6703d.go) — line 18: initialization cycle for x
 - [`fixedbugs/issue6703m.go`](testdata/fixedbugs/issue6703m.go) — line 24: initialization cycle for x
 - [`fixedbugs/issue6703n.go`](testdata/fixedbugs/issue6703n.go) — line 24: initialization cycle for x
-- [`fixedbugs/issue6703s.go`](testdata/fixedbugs/issue6703s.go) — line 18: initialization cycle for x
-- [`fixedbugs/issue6703t.go`](testdata/fixedbugs/issue6703t.go) — line 18: initialization cycle for x
 - [`fixedbugs/issue6703y.go`](testdata/fixedbugs/issue6703y.go) — line 23: initialization cycle for x
 - [`fixedbugs/issue6703z.go`](testdata/fixedbugs/issue6703z.go) — line 23: initialization cycle for x
 - [`fixedbugs/issue6772.go`](testdata/fixedbugs/issue6772.go) — line 10: a redeclared in this block
 - [`fixedbugs/issue7310.go`](testdata/fixedbugs/issue7310.go) — line 12: invalid copy: argument must be a slice
 - [`fixedbugs/issue9017.go`](testdata/fixedbugs/issue9017.go) — line 47: p.mS undefined (type P has no field or method mS)
-- [`float_lit3.go`](testdata/float_lit3.go) — line 32: cannot convert max32 + ulp32 / 2 (untyped float constant 3.40282e+38) to type float32
 - [`indirect1.go`](testdata/indirect1.go) — line 41: invalid argument: m1 (variable of type *map[string]int) for built-in len
 - [`method6.go`](testdata/method6.go) — line 21: cannot call pointer method g on A
 - [`switch5.go`](testdata/switch5.go) — line 15: duplicate case 0 (constant of type int) in expression switch
@@ -1210,9 +1166,9 @@ Gno can't process the file (unsupported import or language feature). Skipped via
 - [`writebarrier.go`](testdata/writebarrier.go) — unknown import path unsafe
 - [`zerodivide.go`](testdata/zerodivide.go) — uintptr type not supported in Gno
 
-## ✅ Clean — verified (905)
+## ✅ Clean — verified (949)
 
-Gno's behavior is pinned and matches; no outstanding issue. Composition (invariants re-checked at each regen): 351 run/both-silent, 20 run/matching-output, 224 errorcheck/full-marker-coverage-with-Gno, 306 compile/all-checkers-accept, 4 other modes.
+Gno's behavior is pinned and matches; no outstanding issue. Composition (invariants re-checked at each regen): 387 run/both-silent, 21 run/matching-output, 231 errorcheck/full-marker-coverage-with-Gno, 306 compile/all-checkers-accept, 4 other modes.
 
 - [`alias.go`](testdata/alias.go)
 - [`alias1.go`](testdata/alias1.go)
@@ -1221,6 +1177,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`cannotassign.go`](testdata/cannotassign.go)
 - [`char_lit1.go`](testdata/char_lit1.go)
 - [`closure1.go`](testdata/closure1.go)
+- [`closure4.go`](testdata/closure4.go)
 - [`closure6.go`](testdata/closure6.go)
 - [`compile/canary.go`](testdata/compile/canary.go)
 - [`compile/closure6.go`](testdata/compile/closure6.go)
@@ -1362,6 +1319,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/bug183.go`](testdata/fixedbugs/bug183.go)
 - [`fixedbugs/bug184.go`](testdata/fixedbugs/bug184.go)
 - [`fixedbugs/bug185.go`](testdata/fixedbugs/bug185.go)
+- [`fixedbugs/bug186.go`](testdata/fixedbugs/bug186.go)
 - [`fixedbugs/bug188.go`](testdata/fixedbugs/bug188.go)
 - [`fixedbugs/bug193.go`](testdata/fixedbugs/bug193.go)
 - [`fixedbugs/bug194.go`](testdata/fixedbugs/bug194.go)
@@ -1425,6 +1383,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/bug294.go`](testdata/fixedbugs/bug294.go)
 - [`fixedbugs/bug296.go`](testdata/fixedbugs/bug296.go)
 - [`fixedbugs/bug297.go`](testdata/fixedbugs/bug297.go)
+- [`fixedbugs/bug299.go`](testdata/fixedbugs/bug299.go)
 - [`fixedbugs/bug300.go`](testdata/fixedbugs/bug300.go)
 - [`fixedbugs/bug301.go`](testdata/fixedbugs/bug301.go)
 - [`fixedbugs/bug303.go`](testdata/fixedbugs/bug303.go)
@@ -1450,6 +1409,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/bug355.go`](testdata/fixedbugs/bug355.go)
 - [`fixedbugs/bug356.go`](testdata/fixedbugs/bug356.go)
 - [`fixedbugs/bug361.go`](testdata/fixedbugs/bug361.go)
+- [`fixedbugs/bug362.go`](testdata/fixedbugs/bug362.go)
 - [`fixedbugs/bug363.go`](testdata/fixedbugs/bug363.go)
 - [`fixedbugs/bug364.go`](testdata/fixedbugs/bug364.go)
 - [`fixedbugs/bug366.go`](testdata/fixedbugs/bug366.go)
@@ -1470,6 +1430,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/bug399.go`](testdata/fixedbugs/bug399.go)
 - [`fixedbugs/bug402.go`](testdata/fixedbugs/bug402.go)
 - [`fixedbugs/bug405.go`](testdata/fixedbugs/bug405.go)
+- [`fixedbugs/bug406.go`](testdata/fixedbugs/bug406.go)
 - [`fixedbugs/bug410.go`](testdata/fixedbugs/bug410.go)
 - [`fixedbugs/bug411.go`](testdata/fixedbugs/bug411.go)
 - [`fixedbugs/bug413.go`](testdata/fixedbugs/bug413.go)
@@ -1486,6 +1447,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/bug431.go`](testdata/fixedbugs/bug431.go)
 - [`fixedbugs/bug432.go`](testdata/fixedbugs/bug432.go)
 - [`fixedbugs/bug433.go`](testdata/fixedbugs/bug433.go)
+- [`fixedbugs/bug434.go`](testdata/fixedbugs/bug434.go)
 - [`fixedbugs/bug435.go`](testdata/fixedbugs/bug435.go)
 - [`fixedbugs/bug436.go`](testdata/fixedbugs/bug436.go)
 - [`fixedbugs/bug438.go`](testdata/fixedbugs/bug438.go)
@@ -1496,10 +1458,12 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/bug442.go`](testdata/fixedbugs/bug442.go)
 - [`fixedbugs/bug443.go`](testdata/fixedbugs/bug443.go)
 - [`fixedbugs/bug445.go`](testdata/fixedbugs/bug445.go)
+- [`fixedbugs/bug446.go`](testdata/fixedbugs/bug446.go)
 - [`fixedbugs/bug450.go`](testdata/fixedbugs/bug450.go)
 - [`fixedbugs/bug451.go`](testdata/fixedbugs/bug451.go)
 - [`fixedbugs/bug452.go`](testdata/fixedbugs/bug452.go)
 - [`fixedbugs/bug453.go`](testdata/fixedbugs/bug453.go)
+- [`fixedbugs/bug454.go`](testdata/fixedbugs/bug454.go)
 - [`fixedbugs/bug455.go`](testdata/fixedbugs/bug455.go)
 - [`fixedbugs/bug456.go`](testdata/fixedbugs/bug456.go)
 - [`fixedbugs/bug457.go`](testdata/fixedbugs/bug457.go)
@@ -1511,6 +1475,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/bug477.go`](testdata/fixedbugs/bug477.go)
 - [`fixedbugs/bug481.go`](testdata/fixedbugs/bug481.go)
 - [`fixedbugs/bug482.go`](testdata/fixedbugs/bug482.go)
+- [`fixedbugs/bug483.go`](testdata/fixedbugs/bug483.go)
 - [`fixedbugs/bug486.go`](testdata/fixedbugs/bug486.go)
 - [`fixedbugs/bug489.go`](testdata/fixedbugs/bug489.go)
 - [`fixedbugs/bug490.go`](testdata/fixedbugs/bug490.go)
@@ -1519,6 +1484,8 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/bug495.go`](testdata/fixedbugs/bug495.go)
 - [`fixedbugs/bug496.go`](testdata/fixedbugs/bug496.go)
 - [`fixedbugs/bug497.go`](testdata/fixedbugs/bug497.go)
+- [`fixedbugs/bug498.go`](testdata/fixedbugs/bug498.go)
+- [`fixedbugs/bug500.go`](testdata/fixedbugs/bug500.go)
 - [`fixedbugs/bug501.go`](testdata/fixedbugs/bug501.go)
 - [`fixedbugs/bug503.go`](testdata/fixedbugs/bug503.go)
 - [`fixedbugs/bug505.go`](testdata/fixedbugs/bug505.go)
@@ -1543,6 +1510,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue10654.go`](testdata/fixedbugs/issue10654.go)
 - [`fixedbugs/issue10925.go`](testdata/fixedbugs/issue10925.go)
 - [`fixedbugs/issue10977.go`](testdata/fixedbugs/issue10977.go)
+- [`fixedbugs/issue11286.go`](testdata/fixedbugs/issue11286.go)
 - [`fixedbugs/issue11326.go`](testdata/fixedbugs/issue11326.go)
 - [`fixedbugs/issue11354.go`](testdata/fixedbugs/issue11354.go)
 - [`fixedbugs/issue11359.go`](testdata/fixedbugs/issue11359.go)
@@ -1562,6 +1530,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue12413.go`](testdata/fixedbugs/issue12413.go)
 - [`fixedbugs/issue12536.go`](testdata/fixedbugs/issue12536.go)
 - [`fixedbugs/issue12577.go`](testdata/fixedbugs/issue12577.go)
+- [`fixedbugs/issue12621.go`](testdata/fixedbugs/issue12621.go)
 - [`fixedbugs/issue12686.go`](testdata/fixedbugs/issue12686.go)
 - [`fixedbugs/issue1304.go`](testdata/fixedbugs/issue1304.go)
 - [`fixedbugs/issue13171.go`](testdata/fixedbugs/issue13171.go)
@@ -1581,6 +1550,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue14321.go`](testdata/fixedbugs/issue14321.go)
 - [`fixedbugs/issue14405.go`](testdata/fixedbugs/issue14405.go)
 - [`fixedbugs/issue14553.go`](testdata/fixedbugs/issue14553.go)
+- [`fixedbugs/issue14591.go`](testdata/fixedbugs/issue14591.go)
 - [`fixedbugs/issue14651.go`](testdata/fixedbugs/issue14651.go)
 - [`fixedbugs/issue14652.go`](testdata/fixedbugs/issue14652.go)
 - [`fixedbugs/issue14725.go`](testdata/fixedbugs/issue14725.go)
@@ -1590,6 +1560,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue15084.go`](testdata/fixedbugs/issue15084.go)
 - [`fixedbugs/issue15141.go`](testdata/fixedbugs/issue15141.go)
 - [`fixedbugs/issue15175.go`](testdata/fixedbugs/issue15175.go)
+- [`fixedbugs/issue15252.go`](testdata/fixedbugs/issue15252.go)
 - [`fixedbugs/issue15311.go`](testdata/fixedbugs/issue15311.go)
 - [`fixedbugs/issue15585.go`](testdata/fixedbugs/issue15585.go)
 - [`fixedbugs/issue15602.go`](testdata/fixedbugs/issue15602.go)
@@ -1599,13 +1570,17 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue15895.go`](testdata/fixedbugs/issue15895.go)
 - [`fixedbugs/issue15902.go`](testdata/fixedbugs/issue15902.go)
 - [`fixedbugs/issue15961.go`](testdata/fixedbugs/issue15961.go)
+- [`fixedbugs/issue15975.go`](testdata/fixedbugs/issue15975.go) — ✅ Fixed: master PR #5715 (df91bada8); verified clean, broken at parent; re-golden after rebase.
 - [`fixedbugs/issue15988.go`](testdata/fixedbugs/issue15988.go)
 - [`fixedbugs/issue15992.go`](testdata/fixedbugs/issue15992.go)
+- [`fixedbugs/issue16095.go`](testdata/fixedbugs/issue16095.go)
 - [`fixedbugs/issue16193.go`](testdata/fixedbugs/issue16193.go)
 - [`fixedbugs/issue16249.go`](testdata/fixedbugs/issue16249.go)
 - [`fixedbugs/issue16428.go`](testdata/fixedbugs/issue16428.go)
+- [`fixedbugs/issue16515.go`](testdata/fixedbugs/issue16515.go)
 - [`fixedbugs/issue16733.go`](testdata/fixedbugs/issue16733.go)
 - [`fixedbugs/issue16741.go`](testdata/fixedbugs/issue16741.go)
+- [`fixedbugs/issue16760.go`](testdata/fixedbugs/issue16760.go) — ✅ Fixed: master PR #5715 (df91bada8); verified clean, broken at parent; re-golden after rebase.
 - [`fixedbugs/issue16804.go`](testdata/fixedbugs/issue16804.go)
 - [`fixedbugs/issue17005.go`](testdata/fixedbugs/issue17005.go)
 - [`fixedbugs/issue17039.go`](testdata/fixedbugs/issue17039.go)
@@ -1625,6 +1600,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue18906.go`](testdata/fixedbugs/issue18906.go)
 - [`fixedbugs/issue18994.go`](testdata/fixedbugs/issue18994.go)
 - [`fixedbugs/issue19012.go`](testdata/fixedbugs/issue19012.go)
+- [`fixedbugs/issue19040.go`](testdata/fixedbugs/issue19040.go) — 🚧 Fixing: PR #5732 (fix/5667, typedRuntimeError); verified clean on branch, broken on master; tracks issue #5667; re-golden after merge.
 - [`fixedbugs/issue19056.go`](testdata/fixedbugs/issue19056.go)
 - [`fixedbugs/issue19084.go`](testdata/fixedbugs/issue19084.go)
 - [`fixedbugs/issue19137.go`](testdata/fixedbugs/issue19137.go)
@@ -1646,6 +1622,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue19880.go`](testdata/fixedbugs/issue19880.go)
 - [`fixedbugs/issue19911.go`](testdata/fixedbugs/issue19911.go)
 - [`fixedbugs/issue19947.go`](testdata/fixedbugs/issue19947.go)
+- [`fixedbugs/issue20029.go`](testdata/fixedbugs/issue20029.go)
 - [`fixedbugs/issue20097.go`](testdata/fixedbugs/issue20097.go)
 - [`fixedbugs/issue20145.go`](testdata/fixedbugs/issue20145.go)
 - [`fixedbugs/issue20233.go`](testdata/fixedbugs/issue20233.go)
@@ -1667,6 +1644,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue21882.go`](testdata/fixedbugs/issue21882.go)
 - [`fixedbugs/issue21887.go`](testdata/fixedbugs/issue21887.go)
 - [`fixedbugs/issue21934.go`](testdata/fixedbugs/issue21934.go)
+- [`fixedbugs/issue21963.go`](testdata/fixedbugs/issue21963.go)
 - [`fixedbugs/issue21988.go`](testdata/fixedbugs/issue21988.go)
 - [`fixedbugs/issue22063.go`](testdata/fixedbugs/issue22063.go)
 - [`fixedbugs/issue22164.go`](testdata/fixedbugs/issue22164.go)
@@ -1677,6 +1655,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue22389.go`](testdata/fixedbugs/issue22389.go)
 - [`fixedbugs/issue22429.go`](testdata/fixedbugs/issue22429.go)
 - [`fixedbugs/issue22921.go`](testdata/fixedbugs/issue22921.go)
+- [`fixedbugs/issue23017.go`](testdata/fixedbugs/issue23017.go) — ✅ Fixed: master PR #5790 (7b2888c3b); verified clean, broken at parent; re-golden after rebase.
 - [`fixedbugs/issue23093.go`](testdata/fixedbugs/issue23093.go)
 - [`fixedbugs/issue23094.go`](testdata/fixedbugs/issue23094.go)
 - [`fixedbugs/issue23188.go`](testdata/fixedbugs/issue23188.go)
@@ -1686,6 +1665,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue23489.go`](testdata/fixedbugs/issue23489.go)
 - [`fixedbugs/issue23504.go`](testdata/fixedbugs/issue23504.go)
 - [`fixedbugs/issue23522.go`](testdata/fixedbugs/issue23522.go)
+- [`fixedbugs/issue23536.go`](testdata/fixedbugs/issue23536.go) — ✅ Fixed: master PR #5780 (5d7ec8679); verified clean, broken at parent; re-golden after rebase.
 - [`fixedbugs/issue23545.go`](testdata/fixedbugs/issue23545.go)
 - [`fixedbugs/issue23546.go`](testdata/fixedbugs/issue23546.go)
 - [`fixedbugs/issue23586.go`](testdata/fixedbugs/issue23586.go)
@@ -1695,6 +1675,8 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue23780.go`](testdata/fixedbugs/issue23780.go)
 - [`fixedbugs/issue23781.go`](testdata/fixedbugs/issue23781.go)
 - [`fixedbugs/issue23812.go`](testdata/fixedbugs/issue23812.go)
+- [`fixedbugs/issue23814.go`](testdata/fixedbugs/issue23814.go) — ✅ Fixed: master PR #5780 (5d7ec8679); verified clean, broken at parent; re-golden after rebase.
+- [`fixedbugs/issue23837.go`](testdata/fixedbugs/issue23837.go) — ✅ Fixed: master PR #5711 (a7e4c34b0, bisected); verified clean, broken at parent; re-golden after rebase.
 - [`fixedbugs/issue23868.go`](testdata/fixedbugs/issue23868.go)
 - [`fixedbugs/issue23870.go`](testdata/fixedbugs/issue23870.go)
 - [`fixedbugs/issue23912.go`](testdata/fixedbugs/issue23912.go)
@@ -1779,6 +1761,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue37246.go`](testdata/fixedbugs/issue37246.go)
 - [`fixedbugs/issue37753.go`](testdata/fixedbugs/issue37753.go)
 - [`fixedbugs/issue3783.go`](testdata/fixedbugs/issue3783.go)
+- [`fixedbugs/issue37975.go`](testdata/fixedbugs/issue37975.go) — 🚧 Fixing: PR #5732 (fix/5667, typedRuntimeError); verified clean on branch, broken on master; re-golden after merge.
 - [`fixedbugs/issue38356.go`](testdata/fixedbugs/issue38356.go)
 - [`fixedbugs/issue38359.go`](testdata/fixedbugs/issue38359.go)
 - [`fixedbugs/issue38496.go`](testdata/fixedbugs/issue38496.go)
@@ -1812,6 +1795,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue43112.go`](testdata/fixedbugs/issue43112.go)
 - [`fixedbugs/issue4316.go`](testdata/fixedbugs/issue4316.go)
 - [`fixedbugs/issue43480.go`](testdata/fixedbugs/issue43480.go)
+- [`fixedbugs/issue4353.go`](testdata/fixedbugs/issue4353.go) — ✅ Fixed: master PR #5738 (1da3a0ff7); verified clean, broken at parent; re-golden after rebase.
 - [`fixedbugs/issue43570.go`](testdata/fixedbugs/issue43570.go)
 - [`fixedbugs/issue43619.go`](testdata/fixedbugs/issue43619.go)
 - [`fixedbugs/issue4365.go`](testdata/fixedbugs/issue4365.go)
@@ -1873,6 +1857,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue49611.go`](testdata/fixedbugs/issue49611.go)
 - [`fixedbugs/issue49665.go`](testdata/fixedbugs/issue49665.go)
 - [`fixedbugs/issue50169.go`](testdata/fixedbugs/issue50169.go)
+- [`fixedbugs/issue50190.go`](testdata/fixedbugs/issue50190.go) — 🚧 Fixing: #5379
 - [`fixedbugs/issue50439.go`](testdata/fixedbugs/issue50439.go)
 - [`fixedbugs/issue5056.go`](testdata/fixedbugs/issue5056.go)
 - [`fixedbugs/issue50671.go`](testdata/fixedbugs/issue50671.go)
@@ -1921,7 +1906,10 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue59174.go`](testdata/fixedbugs/issue59174.go)
 - [`fixedbugs/issue59367.go`](testdata/fixedbugs/issue59367.go)
 - [`fixedbugs/issue59404part2.go`](testdata/fixedbugs/issue59404part2.go)
+- [`fixedbugs/issue59572.go`](testdata/fixedbugs/issue59572.go) — ✅ Fixed: master PR #5764 (98f4db57c); verified 1/2/3 output, broken at parent; re-golden after rebase.
+- [`fixedbugs/issue6004.go`](testdata/fixedbugs/issue6004.go)
 - [`fixedbugs/issue6036.go`](testdata/fixedbugs/issue6036.go)
+- [`fixedbugs/issue6055.go`](testdata/fixedbugs/issue6055.go) — ✅ Fixed: master PR #5715 (df91bada8); verified clean, broken at parent; re-golden after rebase.
 - [`fixedbugs/issue6131.go`](testdata/fixedbugs/issue6131.go)
 - [`fixedbugs/issue6140.go`](testdata/fixedbugs/issue6140.go)
 - [`fixedbugs/issue61778.go`](testdata/fixedbugs/issue61778.go)
@@ -1952,6 +1940,8 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue66873.go`](testdata/fixedbugs/issue66873.go)
 - [`fixedbugs/issue6703a.go`](testdata/fixedbugs/issue6703a.go)
 - [`fixedbugs/issue6703b.go`](testdata/fixedbugs/issue6703b.go)
+- [`fixedbugs/issue6703c.go`](testdata/fixedbugs/issue6703c.go)
+- [`fixedbugs/issue6703d.go`](testdata/fixedbugs/issue6703d.go)
 - [`fixedbugs/issue6703e.go`](testdata/fixedbugs/issue6703e.go)
 - [`fixedbugs/issue6703f.go`](testdata/fixedbugs/issue6703f.go)
 - [`fixedbugs/issue6703g.go`](testdata/fixedbugs/issue6703g.go)
@@ -1964,6 +1954,8 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue6703p.go`](testdata/fixedbugs/issue6703p.go)
 - [`fixedbugs/issue6703q.go`](testdata/fixedbugs/issue6703q.go)
 - [`fixedbugs/issue6703r.go`](testdata/fixedbugs/issue6703r.go)
+- [`fixedbugs/issue6703s.go`](testdata/fixedbugs/issue6703s.go)
+- [`fixedbugs/issue6703t.go`](testdata/fixedbugs/issue6703t.go)
 - [`fixedbugs/issue6703u.go`](testdata/fixedbugs/issue6703u.go)
 - [`fixedbugs/issue6703v.go`](testdata/fixedbugs/issue6703v.go)
 - [`fixedbugs/issue6703w.go`](testdata/fixedbugs/issue6703w.go)
@@ -1985,6 +1977,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue7153.go`](testdata/fixedbugs/issue7153.go)
 - [`fixedbugs/issue71680.go`](testdata/fixedbugs/issue71680.go)
 - [`fixedbugs/issue71852.go`](testdata/fixedbugs/issue71852.go)
+- [`fixedbugs/issue71932.go`](testdata/fixedbugs/issue71932.go)
 - [`fixedbugs/issue7214.go`](testdata/fixedbugs/issue7214.go)
 - [`fixedbugs/issue7223.go`](testdata/fixedbugs/issue7223.go)
 - [`fixedbugs/issue7346.go`](testdata/fixedbugs/issue7346.go)
@@ -1993,24 +1986,28 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`fixedbugs/issue7538a.go`](testdata/fixedbugs/issue7538a.go)
 - [`fixedbugs/issue7538b.go`](testdata/fixedbugs/issue7538b.go)
 - [`fixedbugs/issue7547.go`](testdata/fixedbugs/issue7547.go)
+- [`fixedbugs/issue7550.go`](testdata/fixedbugs/issue7550.go)
 - [`fixedbugs/issue7590.go`](testdata/fixedbugs/issue7590.go)
 - [`fixedbugs/issue7742.go`](testdata/fixedbugs/issue7742.go)
 - [`fixedbugs/issue7794.go`](testdata/fixedbugs/issue7794.go)
 - [`fixedbugs/issue7863.go`](testdata/fixedbugs/issue7863.go)
 - [`fixedbugs/issue7884.go`](testdata/fixedbugs/issue7884.go)
+- [`fixedbugs/issue7944.go`](testdata/fixedbugs/issue7944.go)
 - [`fixedbugs/issue7995.go`](testdata/fixedbugs/issue7995.go)
 - [`fixedbugs/issue7996.go`](testdata/fixedbugs/issue7996.go)
 - [`fixedbugs/issue8028.go`](testdata/fixedbugs/issue8028.go)
+- [`fixedbugs/issue8047.go`](testdata/fixedbugs/issue8047.go) — ✅ Fixed: master PR #5722 (49af0f55c); verified clean, broken at parent; re-golden after rebase.
 - [`fixedbugs/issue8047b.go`](testdata/fixedbugs/issue8047b.go)
 - [`fixedbugs/issue8073.go`](testdata/fixedbugs/issue8073.go)
 - [`fixedbugs/issue8076.go`](testdata/fixedbugs/issue8076.go)
 - [`fixedbugs/issue8079.go`](testdata/fixedbugs/issue8079.go)
+- [`fixedbugs/issue8132.go`](testdata/fixedbugs/issue8132.go)
 - [`fixedbugs/issue8139.go`](testdata/fixedbugs/issue8139.go)
-- [`fixedbugs/issue8183.go`](testdata/fixedbugs/issue8183.go)
 - [`fixedbugs/issue8311.go`](testdata/fixedbugs/issue8311.go)
 - [`fixedbugs/issue8325.go`](testdata/fixedbugs/issue8325.go)
 - [`fixedbugs/issue8438.go`](testdata/fixedbugs/issue8438.go)
 - [`fixedbugs/issue8440.go`](testdata/fixedbugs/issue8440.go)
+- [`fixedbugs/issue8606.go`](testdata/fixedbugs/issue8606.go) — ✅ Fixed: master PR #5713 (5d889b083); verified clean, broken at parent; re-golden after rebase.
 - [`fixedbugs/issue8613.go`](testdata/fixedbugs/issue8613.go)
 - [`fixedbugs/issue8620.go`](testdata/fixedbugs/issue8620.go)
 - [`fixedbugs/issue8745.go`](testdata/fixedbugs/issue8745.go)
@@ -2036,6 +2033,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`func8.go`](testdata/func8.go)
 - [`funcdup.go`](testdata/funcdup.go)
 - [`funcdup2.go`](testdata/funcdup2.go)
+- [`gc.go`](testdata/gc.go)
 - [`gc1.go`](testdata/gc1.go)
 - [`gno/optin_canary.gno`](testdata/gno/optin_canary.gno)
 - [`helloworld.go`](testdata/helloworld.go)
@@ -2051,6 +2049,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`interface/convert2.go`](testdata/interface/convert2.go)
 - [`interface/explicit.go`](testdata/interface/explicit.go)
 - [`interface/fail.go`](testdata/interface/fail.go)
+- [`interface/noeq.go`](testdata/interface/noeq.go) — ✅ Fixed: master PR #5713 (5d889b083); verified clean, broken at parent; re-golden after rebase.
 - [`interface/pointer.go`](testdata/interface/pointer.go)
 - [`interface/receiver.go`](testdata/interface/receiver.go)
 - [`interface/receiver1.go`](testdata/interface/receiver1.go)
@@ -2100,6 +2099,7 @@ Gno's behavior is pinned and matches; no outstanding issue. Composition (invaria
 - [`shift2.go`](testdata/shift2.go)
 - [`simassign.go`](testdata/simassign.go)
 - [`slice3err.go`](testdata/slice3err.go)
+- [`stackobj2.go`](testdata/stackobj2.go)
 - [`syntax/composite.go`](testdata/syntax/composite.go)
 - [`syntax/ddd.go`](testdata/syntax/ddd.go)
 - [`syntax/import.go`](testdata/syntax/import.go)

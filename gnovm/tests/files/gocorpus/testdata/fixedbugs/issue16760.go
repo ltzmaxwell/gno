@@ -46,12 +46,4 @@ func usestack(n int) {
 
 // GnoOutput:
 
-// GnoError:
-// interface method call on undefined value
-
 // GoOutput:
-
-// KnownIssue:
-// Nil-interface method call escaped as an unrecoverable VM error instead
-// of a recoverable runtime panic, so the recover() in foo never fired.
-// Same root cause as fixedbugs/issue15975.go.

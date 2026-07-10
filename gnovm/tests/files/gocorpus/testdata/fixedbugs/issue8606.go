@@ -110,12 +110,4 @@ func shouldPanic(name string, f func()) {
 
 // GnoOutput:
 
-// GnoError:
-// comparing main[main/issue8606.go:13:1-97:2].A{[]uint8{0x1}, 1} and main[main/issue8606.go:13:1-97:2].A{[]uint8{0x1}, 2} did not panic
-
 // GoOutput:
-
-// KnownIssue:
-// Comparing composites holding uncomparable dynamic values (e.g. A{b, 1}
-// == A{b, 2} with b []byte at index 0) returned false instead of
-// panicking — uncomparable interface elements must panic at runtime.

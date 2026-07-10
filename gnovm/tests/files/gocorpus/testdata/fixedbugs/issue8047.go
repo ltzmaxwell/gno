@@ -33,12 +33,4 @@ func main() {
 
 // GnoOutput:
 
-// GnoError:
-// interface conversion: gnolang.Value is nil, not *gnolang.FuncValue
-
 // GoOutput:
-
-// KnownIssue:
-// Deferring a typed-nil func value crashed the VM host-side: the nil
-// Value was asserted to *FuncValue without a nil check, instead of a
-// recoverable "nil function" panic at call time.

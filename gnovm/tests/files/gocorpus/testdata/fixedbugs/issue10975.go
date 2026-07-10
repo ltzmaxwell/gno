@@ -19,12 +19,12 @@ func New() I {
 
 // GnoError:
 // line 16: 2: [function "New" does not terminate]
-// line 17: struct{} does not implement main.I (missing method int)
+// line 17: struct{} does not implement main.I (missing method )
 // line 18: expected declaration, found '}'
 
 // GnoOverStrictError:
 // line 16: 2: [function "New" does not terminate]
-// line 17: struct{} does not implement main.I (missing method int)
+// line 17: struct{} does not implement main.I (missing method )
 // line 18: expected declaration, found '}'
 
 // UncaughtError:

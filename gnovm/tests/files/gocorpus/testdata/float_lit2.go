@@ -164,27 +164,11 @@ func fromBits(b uint64, x interface{}) interface{} {
 }
 
 // GnoOutput:
-// BUG
-// max32 - ulp32 + ulp32/2 + ulp32/two64: have 3.4028233e+38 (0x7f7ffffe) want 3.4028235e+38 (0x7f7fffff)
-// max32 - ulp32/2 + ulp32/two64: have 3.4028233e+38 (0x7f7ffffe) want 3.4028235e+38 (0x7f7fffff)
-// max32 + ulp32/2 - ulp32/two64: have +Inf (0x7f800000) want 3.4028235e+38 (0x7f7fffff)
-// -(max32 - ulp32 + ulp32/2 + ulp32/two64): have -3.4028233e+38 (0xff7ffffe) want -3.4028235e+38 (0xff7fffff)
-// -(max32 - ulp32/2 + ulp32/two64): have -3.4028233e+38 (0xff7ffffe) want -3.4028235e+38 (0xff7fffff)
-// -(max32 + ulp32/2 - ulp32/two64): have -Inf (0xff800000) want -3.4028235e+38 (0xff7fffff)
-// max32 - ulp32 + ulp32/2 + 1: have 3.4028233e+38 (0x7f7ffffe) want 3.4028235e+38 (0x7f7fffff)
-// max32 - ulp32/2 + 1: have 3.4028233e+38 (0x7f7ffffe) want 3.4028235e+38 (0x7f7fffff)
-// max32 + ulp32/2 - 1: have +Inf (0x7f800000) want 3.4028235e+38 (0x7f7fffff)
-// -(max32 - ulp32 + ulp32/2 + 1): have -3.4028233e+38 (0xff7ffffe) want -3.4028235e+38 (0xff7fffff)
-// -(max32 - ulp32/2 + 1): have -3.4028233e+38 (0xff7ffffe) want -3.4028235e+38 (0xff7fffff)
-// -(max32 + ulp32/2 - 1): have -Inf (0xff800000) want -3.4028235e+38 (0xff7fffff)
-// max32 - ulp32 + ulp32/2 + 1/two128: have 3.4028233e+38 (0x7f7ffffe) want 3.4028235e+38 (0x7f7fffff)
-// max32 - ulp32/2 + 1/two128: have 3.4028233e+38 (0x7f7ffffe) want 3.4028235e+38 (0x7f7fffff)
-// max32 + ulp32/2 - 1/two128: have +Inf (0x7f800000) want 3.4028235e+38 (0x7f7fffff)
-// -(max32 - ulp32 + ulp32/2 + 1/two128): have -3.4028233e+38 (0xff7ffffe) want -3.4028235e+38 (0xff7fffff)
-// -(max32 - ulp32/2 + 1/two128): have -3.4028233e+38 (0xff7ffffe) want -3.4028235e+38 (0xff7fffff)
-// -(max32 + ulp32/2 - 1/two128): have -Inf (0xff800000) want -3.4028235e+38 (0xff7fffff)
+
+// GnoError:
+// main/float_lit2.go:56:31-69: cannot convert untyped bigdec to float32 -- too close to +-Inf
 
 // GoOutput:
 
-// KnownDivergence:
-// TODO: <category>: explain why this divergence is acceptable
+// KnownIssue:
+// TODO: explain the Gno bug (Gno errors where Go runs clean)

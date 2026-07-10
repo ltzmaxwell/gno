@@ -28,10 +28,4 @@ func main() {
 
 // GnoOutput:
 
-// GnoError:
-// multiplication overflow
-
 // GoOutput:
-
-// KnownDivergence:
-// see also 29190.

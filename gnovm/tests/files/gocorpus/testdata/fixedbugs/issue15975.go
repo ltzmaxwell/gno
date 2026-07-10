@@ -40,11 +40,4 @@ func main() {
 
 // GnoOutput:
 
-// GnoError:
-// interface method call on undefined value
-
 // GoOutput:
-
-// KnownIssue:
-// Deferred nil-interface method call escaped as an unrecoverable VM error
-// instead of a recoverable runtime panic, so recover() never fired.
