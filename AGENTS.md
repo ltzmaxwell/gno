@@ -112,6 +112,40 @@ make fmt                        # Format all code
 
 ---
 
+## Consensus Safety (node-side code: GnoVM, keeper, tm2 store)
+
+The `gno-security*.md` docs above are for realm authors. These are for changing the
+node itself, where a wrong answer is not a bug in one contract but a chain split.
+
+- **Nothing that reaches consensus may depend on Go map iteration order** — gas
+  charged, error text, state written, anything hashed into a block. Walk
+  `slices.Sorted(maps.Keys(m))` instead. Note this is about **Go** maps in node
+  code: Gno's own maps iterate in insertion order (see
+  [gno-data-structures.md](docs/resources/gno-data-structures.md)), so intuition
+  from writing `.gno` does not transfer here.
+- **A commutative reduction is not a defence by itself.** If the loop memoizes a
+  value derived from an early exit — a cycle truncation, a depth cap, a visited-set
+  hit — then which iteration exited early changes what every later one reads, and
+  order leaks into the total even though the arithmetic commutes. This shipped once:
+  a per-package gas count came out either 3076 or 6136 nodes from identical source.
+- **Prove determinism, do not reason about it.** Go randomizes map order per range,
+  so one call proves nothing. Run the computation a few hundred times in one process
+  and assert a single distinct result.
+- **Divergence forks the chain**, so this is not a "nit": `ABCIResult.Error` is
+  hashed into `LastResultsHash`, and `runTx` charges `GasConsumedToLimit()` to the
+  `BlockGasMeter`. Two nodes that price the same transaction differently disagree on
+  the block.
+- **Charging gas before the pass that would reject the input** is allowed, but the
+  charge must then be deterministic for input that never survives validation —
+  malformed input reaches it.
+- **`1 gas == 1ns` means reference hardware**, an Intel Xeon Platinum 8168 (see the
+  `OpCPU*` table in `gnovm/pkg/gnolang/machine.go`). A rate measured on a dev
+  machine must be calibrated to it; `gnovm/cmd/calibrate` ships paired benchmark
+  output for exactly that. Skipping the step under-charges by the machine ratio,
+  which for Apple silicon is ~3x.
+
+---
+
 ## Architecture Decision Records (ADRs)
 
 **Every non-trivial AI-assisted PR must include an ADR.**
