@@ -128,9 +128,22 @@ node itself, where a wrong answer is not a bug in one contract but a chain split
   hit — then which iteration exited early changes what every later one reads, and
   order leaks into the total even though the arithmetic commutes. This shipped once:
   a per-package gas count came out either 3076 or 6136 nodes from identical source.
+- **This recurs.** `preprocess.go` already sorts for the same reason twice over:
+  `TestInitOrderDeterminism` guards variable-initialization order against map
+  iteration over dependency sets, and `TestCircDepDeterminism` exists because
+  circular-dependency *error messages* came out in random order until the DFS was
+  sorted. Same shape — a map, a cycle, a consensus-visible output — in a different
+  pass. Treat a map on a consensus path as a defect until shown otherwise.
 - **Prove determinism, do not reason about it.** Go randomizes map order per range,
   so one call proves nothing. Run the computation a few hundred times in one process
-  and assert a single distinct result.
+  and assert a single distinct result. Then revert your fix and confirm the test
+  fails: a determinism test that cannot fail is common, because symmetric fixtures
+  are stable under both orders.
+- **Test the REJECT path, not just valid input.** Charging before validation means
+  malformed input reaches the charge, and malformed input is where the interesting
+  branches live — cycle truncations, depth caps, bail-outs. A determinism sweep over
+  only valid fixtures (the whole `examples/` corpus, say) is silent on that entire
+  class: nothing valid contains an invalid recursive type.
 - **Divergence forks the chain**, so this is not a "nit": `ABCIResult.Error` is
   hashed into `LastResultsHash`, and `runTx` charges `GasConsumedToLimit()` to the
   `BlockGasMeter`. Two nodes that price the same transaction differently disagree on
