@@ -37,6 +37,14 @@ Split the two responsibilities instead of patching one branch:
   mismatch is reported before division by zero, as in Go.
 - `specifyType` no longer asserts assignability while binding generic
   arguments; the argument loop checks each one right after.
+- `checkOrConvertType` itself is one linear pass: constant, shift, then a
+  single static-type lookup and check, after which a typed operand gets only
+  the named-type wrap and an untyped one the push-down or conversion. The
+  old tail call into `convertType` re-derived those facts, and the unary
+  branch repeated the check above it. `convertType` stays for its three
+  check-free callers.
+- Every operator form asserts "operator defined on type" through one
+  `assertOperatorDefined`; six sites carried their own copy.
 
 ## Alternatives considered
 

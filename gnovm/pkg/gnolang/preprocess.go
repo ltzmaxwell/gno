@@ -4832,106 +4832,119 @@ func isConstType(x Expr) bool {
 	return ok
 }
 
-// check before convert type
+// checkOrConvertType makes *x fit destination type t, checking assignability
+// exactly once. A nil t means "no destination, take the default type" (the
+// typeless `var x = <expr>` path and recursive untyped-operand calls). A const
+// is converted in place; an untyped operand is converted, or has t pushed into
+// its own operands; a typed operand needs no conversion beyond wrapping an
+// unnamed type in its named counterpart.
 func checkOrConvertType(store Store, last BlockNode, n Node, x *Expr, t Type) {
 	if debug {
 		debug.Printf("checkOrConvertType, *x: %v:, t:%v \n", *x, t)
 	}
-	if cx, ok := (*x).(*ConstExpr); ok {
-		// A nil t means "no destination type, just default-convert below"
-		// (the typeless `var x = <expr>` path and recursive untyped-operand
-		// calls). It must be guarded here: checkAssignableTo now panics on a
-		// nil dt rather than treating it as a no-op.
+	switch ex := (*x).(type) {
+	case nil:
+		return
+	case *ConstExpr:
 		if t != nil {
 			// e.g. int(1) == int8(1)
-			mustAssignableTo(store, n, cx.T, t)
+			mustAssignableTo(store, n, ex.T, t)
 		}
-	} else if bx, ok := (*x).(*BinaryExpr); ok && (bx.Op == SHL || bx.Op == SHR) {
-		xt := evalStaticTypeOf(store, last, *x)
-		if debug {
-			debug.Printf("shift, xt: %v, Op: %v, t: %v \n", xt, bx.Op, t)
+		convertConst(store, last, n, ex, t)
+		return
+	case *BinaryExpr:
+		if ex.Op == SHL || ex.Op == SHR {
+			checkOrConvertShift(store, last, n, ex, t)
+			return
 		}
+	}
 
-		if isUntyped(xt) {
-			if t == nil || t.Kind() == InterfaceKind {
-				if t != nil {
-					// An untyped shift assigned to an interface target takes
-					// its default type below, which drops the target on the
-					// floor — so assert satisfaction before doing that, or
-					// `var r R = 1 << 2` for a non-empty R is only caught at
-					// runtime. Checked against xt, not defaultTypeOf(xt), so
-					// the diagnostic names the untyped operand.
-					mustAssignableTo(store, n, xt, t)
-				}
-				t = defaultTypeOf(xt)
+	xt := evalStaticTypeOf(store, last, *x)
+	if t != nil {
+		mustAssignableTo(store, n, xt, t)
+	}
+	if !isUntyped(xt) {
+		// Typed: nothing to convert unless one side is a named type and the
+		// other its unnamed form. An interface destination takes x as is.
+		if t != nil && t.Kind() != InterfaceKind && isNamedConversion(xt, t) {
+			doConvertType(store, last, x, t)
+		}
+		return
+	}
+
+	// Untyped, non-const.
+	switch ux := (*x).(type) {
+	case *BinaryExpr:
+		switch ux.Op {
+		case ADD, SUB, MUL, QUO, REM, BAND, BOR, XOR,
+			BAND_NOT, LAND, LOR:
+			if t != nil {
+				// push t into both operands.
+				checkOrConvertType(store, last, n, &ux.Left, t)
+				checkOrConvertType(store, last, n, &ux.Right, t)
+				return
 			}
-			// t is the type from context or default.
-			bx.assertShiftExprCompatible2(t)
+			// No destination: the more specific operand's type decides.
+			// e.g. 1.0<<s + 1: '1.0<<s' alone raises nothing, but checked
+			// against its default BigDec type it fails, so the shift is
+			// "finally" checked here.
+			lt := evalStaticTypeOf(store, last, ux.Left)
+			rt := evalStaticTypeOf(store, last, ux.Right)
+			if shouldSwapOnSpecificity(lt, rt) {
+				checkOrConvertType(store, last, n, &ux.Left, nil)
+				checkOrConvertType(store, last, n, &ux.Right, lt)
+			} else {
+				checkOrConvertType(store, last, n, &ux.Left, rt)
+				checkOrConvertType(store, last, n, &ux.Right, nil)
+			}
+			return
+		case EQL, LSS, GTR, NEQ, LEQ, GEQ:
+			t = BoolType
+		}
+	case *UnaryExpr:
+		if t == nil || t.Kind() == InterfaceKind {
+			t = defaultTypeOf(xt)
+		}
+		checkOrConvertType(store, last, n, &ux.X, t)
+		return
+	}
+	if t == nil {
+		t = defaultTypeOf(xt)
+	}
+	doConvertType(store, last, x, t)
+}
 
-			// Convert untyped to typed.
-			checkOrConvertType(store, last, n, &bx.Left, t)
-			bx.SetAttribute(ATTR_TYPEOF_VALUE, t) // propagate converted type from left operand to shift expr.
-		} else if t != nil {
+// checkOrConvertShift is checkOrConvertType for a shift expression: the
+// result takes the destination type (or the left operand's default), which is
+// then pushed into the left operand; the count was already converted to uint.
+func checkOrConvertShift(store Store, last BlockNode, n Node, bx *BinaryExpr, t Type) {
+	xt := evalStaticTypeOf(store, last, bx)
+	if debug {
+		debug.Printf("shift, xt: %v, Op: %v, t: %v \n", xt, bx.Op, t)
+	}
+	if !isUntyped(xt) {
+		if t != nil {
 			mustAssignableTo(store, n, xt, t)
 		}
 		return
-	} else if *x != nil {
-		xt := evalStaticTypeOf(store, last, *x)
+	}
+	if t == nil || t.Kind() == InterfaceKind {
 		if t != nil {
+			// An untyped shift assigned to an interface target takes its
+			// default type below, which drops the target on the floor — so
+			// assert satisfaction before doing that, or `var r R = 1 << 2`
+			// for a non-empty R is only caught at runtime. Checked against
+			// xt, not defaultTypeOf(xt), so the diagnostic names the
+			// untyped operand.
 			mustAssignableTo(store, n, xt, t)
 		}
-		if isUntyped(xt) {
-			// Push type into expr if qualifying binary expr.
-			if bx, ok := (*x).(*BinaryExpr); ok {
-				switch bx.Op {
-				case ADD, SUB, MUL, QUO, REM, BAND, BOR, XOR,
-					BAND_NOT, LAND, LOR:
-					lt := evalStaticTypeOf(store, last, bx.Left)
-					rt := evalStaticTypeOf(store, last, bx.Right)
-					if t != nil {
-						// push t into bx.Left and bx.Right
-						checkOrConvertType(store, last, n, &bx.Left, t)
-						checkOrConvertType(store, last, n, &bx.Right, t)
-						return
-					} else { // t is nil, and bx is untyped binary expr.
-						if shouldSwapOnSpecificity(lt, rt) {
-							// e.g. 1.0<<s + 1
-							// The expression '1.0<<s' does not trigger assertions of
-							// incompatible types when evaluated alone.
-							// However, when evaluating the full expression '1.0<<s + 1'
-							// without a specific context type, '1.0<<s' is checked against
-							// its default type, the BigDecKind, will trigger assertion failure.
-							// so here in checkOrConvertType, shift expression is "finally" checked.
-							checkOrConvertType(store, last, n, &bx.Left, nil)
-							checkOrConvertType(store, last, n, &bx.Right, lt)
-						} else {
-							checkOrConvertType(store, last, n, &bx.Left, rt)
-							checkOrConvertType(store, last, n, &bx.Right, nil)
-						}
-					}
-					return
-				case EQL, LSS, GTR, NEQ, LEQ, GEQ:
-					t = BoolType
-				default:
-					// do nothing
-				}
-			} else if ux, ok := (*x).(*UnaryExpr); ok {
-				xt := evalStaticTypeOf(store, last, *x)
-				// check assignable first
-				if t != nil {
-					mustAssignableTo(store, n, xt, t)
-				}
-
-				if t == nil || t.Kind() == InterfaceKind {
-					t = defaultTypeOf(xt)
-				}
-				checkOrConvertType(store, last, n, &ux.X, t)
-				return
-			}
-		}
+		t = defaultTypeOf(xt)
 	}
-	// convert recursively
-	convertType(store, last, n, x, t)
+	// t is the type from context or default.
+	bx.assertShiftExprCompatible2(t)
+	// Convert untyped to typed.
+	checkOrConvertType(store, last, n, &bx.Left, t)
+	bx.SetAttribute(ATTR_TYPEOF_VALUE, t) // propagate converted type from left operand to shift expr.
 }
 
 // checkOrConvertOperands converts the less specific of two typed operands of
@@ -4968,8 +4981,8 @@ func convertUntypedOperands(store Store, last BlockNode, n *BinaryExpr, lt, rt T
 	checkOrConvertType(store, last, n, &n.Left, dt)
 }
 
-// 1. convert x to t if x is *ConstExpr.
-// 2. otherwise, assert that x can be coerced to t.
+// convertType is checkOrConvertType without the assignability check, for the
+// callers that already validated x by other means (index keys, shift counts).
 // NOTE: also see checkOrConvertIntegerKind()
 func convertType(store Store, last BlockNode, n Node, x *Expr, t Type) {
 	if debug {
