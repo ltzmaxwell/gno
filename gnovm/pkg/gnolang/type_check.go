@@ -670,49 +670,38 @@ func (x *BinaryExpr) assertShiftExprCompatible1(store Store, last BlockNode, lt,
 	}
 
 	// Step2, check lhs type.
-	if checker, ok := binaryChecker[x.Op]; ok {
-		if checker(lt) { // check pass
-			return
-		}
-
-		// If lhs not IntNum, it must be const.
-		if !lic {
-			if isUntyped(lt) {
-				lt = defaultTypeOf(lt)
-			}
-			panic(fmt.Sprintf("operator %s not defined on: %v", x.Op.TokenString(), kindString(lt)))
-		}
-
-		// LHS is const.
-		// Special case for untyped const lhs.
-		lv := evalConst(store, last, lcx)
-		if !IsExactBigDec(lv.V) {
-			panic(fmt.Sprintf("invalid operation: shifted operand %v (%v) must be integer", lv, lt))
-		}
-
-		// Both const. left is untypedBigDec & exact integer.
-		if ric {
-			// Representable as an integer. e.g. 1.0 << 1.
-			// convert lhs to untypedBigint so it can be evaluated as const later.
-			convertConst(store, last, x, lcx, UntypedBigintType)
-		}
+	if operatorChecker(binaryChecker, x.Op)(lt) { // check pass
 		return
 	}
-	panic(fmt.Sprintf("checker for %s does not exist", x.Op))
+
+	// If lhs not IntNum, it must be const.
+	if !lic {
+		if isUntyped(lt) {
+			lt = defaultTypeOf(lt)
+		}
+		panic(operatorNotDefined(x.Op, lt))
+	}
+
+	// LHS is const.
+	// Special case for untyped const lhs.
+	lv := evalConst(store, last, lcx)
+	if !IsExactBigDec(lv.V) {
+		panic(fmt.Sprintf("invalid operation: shifted operand %v (%v) must be integer", lv, lt))
+	}
+
+	// Both const. left is untypedBigDec & exact integer.
+	if ric {
+		// Representable as an integer. e.g. 1.0 << 1.
+		// convert lhs to untypedBigint so it can be evaluated as const later.
+		convertConst(store, last, x, lcx, UntypedBigintType)
+	}
 }
 
 // assertShiftExprCompatible2 checks if untyped (non-const)
 // shift expr is compatible with t finally, which is type info
 // from context. e.g. var y int = 1.0 << x.
 func (x *BinaryExpr) assertShiftExprCompatible2(t Type) {
-	// check lhs type
-	if checker, ok := binaryChecker[x.Op]; ok {
-		if !checker(t) {
-			panic(fmt.Sprintf("operator %s not defined on: %v", x.Op.TokenString(), kindString(t)))
-		}
-	} else {
-		panic(fmt.Sprintf("checker for %s does not exist", x.Op))
-	}
+	assertOperatorDefined(binaryChecker, x.Op, t)
 }
 
 // AssertCompatible checks that a non-shift binary expression is well-formed
@@ -742,12 +731,12 @@ func (x *BinaryExpr) AssertCompatible(lt, rt Type) {
 				}
 			}
 		case LSS, LEQ, GTR, GEQ:
-			x.assertOperatorDefined(dt)
+			assertOperatorDefined(binaryChecker, x.Op, dt)
 		default:
 			panic("invalid comparison operator")
 		}
 	} else {
-		x.assertOperatorDefined(dt)
+		assertOperatorDefined(binaryChecker, x.Op, dt)
 	}
 }
 
@@ -762,16 +751,26 @@ func (x *BinaryExpr) assertNonZeroDivisor() {
 	}
 }
 
-// assertOperatorDefined panics unless x.Op is defined on dt, the more
-// specific of the two operand types.
-func (x *BinaryExpr) assertOperatorDefined(dt Type) {
-	checker, ok := binaryChecker[x.Op]
+// operatorChecker returns the type predicate registered for op in one of the
+// checker tables above; a missing entry is a table bug, not a user error.
+func operatorChecker(checkers map[Word]func(t Type) bool, op Word) func(t Type) bool {
+	checker, ok := checkers[op]
 	if !ok {
-		panic(fmt.Sprintf("checker for %s does not exist", x.Op))
+		panic(fmt.Sprintf("checker for %s does not exist", op))
 	}
-	if !checker(dt) {
-		panic(fmt.Sprintf("operator %s not defined on: %v", x.Op.TokenString(), kindString(dt)))
+	return checker
+}
+
+// assertOperatorDefined is the first check of every operator form: op must be
+// defined on the operand type t.
+func assertOperatorDefined(checkers map[Word]func(t Type) bool, op Word, t Type) {
+	if !operatorChecker(checkers, op)(t) {
+		panic(operatorNotDefined(op, t))
 	}
+}
+
+func operatorNotDefined(op Word, t Type) string {
+	return fmt.Sprintf("operator %s not defined on: %v", op.TokenString(), kindString(t))
 }
 
 // mismatchedTypes formats a failed operand check the way go/types does:
@@ -800,14 +799,7 @@ func staticTypeOfOperand(x Expr) (Type, bool) {
 }
 
 func (x *UnaryExpr) AssertCompatible(t Type) {
-	// check compatible
-	if checker, ok := unaryChecker[x.Op]; ok {
-		if !checker(t) {
-			panic(fmt.Sprintf("operator %s not defined on: %v", x.Op.TokenString(), kindString(t)))
-		}
-	} else {
-		panic(fmt.Sprintf("checker for %s does not exist", x.Op))
-	}
+	assertOperatorDefined(unaryChecker, x.Op, t)
 }
 
 // AssertCompatible checks that x++/x-- is well-formed: the operand's type must
@@ -816,14 +808,7 @@ func (x *UnaryExpr) AssertCompatible(t Type) {
 // go/types.
 func (x *IncDecStmt) AssertCompatible(store Store, last BlockNode) {
 	t := evalStaticTypeOf(store, last, x.X)
-	// check compatible
-	if checker, ok := IncDecStmtChecker[x.Op]; ok {
-		if !checker(t) {
-			panic(fmt.Sprintf("operator %s not defined on: %v", x.Op.TokenString(), kindString(t)))
-		}
-	} else {
-		panic(fmt.Sprintf("checker for %s does not exist", x.Op))
-	}
+	assertOperatorDefined(IncDecStmtChecker, x.Op, t)
 	// like go/types, operator/type errors take precedence over
 	// target assignability.
 	assertValidAssignLhs(store, last, x.X)
@@ -989,37 +974,31 @@ func (x *AssignStmt) AssertCompatible(store Store, last BlockNode) {
 		lt := evalStaticTypeOf(store, last, x.Lhs[0])
 		rt := evalStaticTypeOf(store, last, x.Rhs[0])
 
-		if checker, ok := AssignStmtChecker[x.Op]; ok {
-			if !checker(lt) {
-				panic(fmt.Sprintf("operator %s not defined on: %v", x.Op.TokenString(), kindString(lt)))
-			}
-			switch x.Op {
-			case ADD_ASSIGN, SUB_ASSIGN, MUL_ASSIGN, QUO_ASSIGN, REM_ASSIGN, BAND_ASSIGN, BOR_ASSIGN, BAND_NOT_ASSIGN, XOR_ASSIGN:
-				// check when both typed
-				if !isUntyped(lt) && !isUntyped(rt) { // in this stage, lt or rt maybe untyped, not converted yet
-					if lt != nil && rt != nil {
-						if lt.TypeID() != rt.TypeID() {
-							panic(fmt.Sprintf("invalid operation: mismatched types %v and %v", lt, rt))
-						}
+		assertOperatorDefined(AssignStmtChecker, x.Op, lt)
+		switch x.Op {
+		case ADD_ASSIGN, SUB_ASSIGN, MUL_ASSIGN, QUO_ASSIGN, REM_ASSIGN, BAND_ASSIGN, BOR_ASSIGN, BAND_NOT_ASSIGN, XOR_ASSIGN:
+			// check when both typed
+			if !isUntyped(lt) && !isUntyped(rt) { // in this stage, lt or rt maybe untyped, not converted yet
+				if lt != nil && rt != nil {
+					if lt.TypeID() != rt.TypeID() {
+						panic(fmt.Sprintf("invalid operation: mismatched types %v and %v", lt, rt))
 					}
 				}
-			case SHL_ASSIGN, SHR_ASSIGN:
-				if !isWhole(rt) {
-					panic(fmt.Sprintf("invalid operation: invalid shift count: %v", x.Rhs[0]))
-				}
-				_, ric := x.Rhs[0].(*ConstExpr)
-				// check negative
-				if ric {
-					rv := evalConst(store, last, x.Rhs[0])
-					if rv.TypedValue.Sign() < 0 {
-						panic(fmt.Sprintf("invalid operation: negative shift count: %v", &rv.TypedValue))
-					}
-				}
-			default:
-				// do nothing
 			}
-		} else {
-			panic(fmt.Sprintf("checker for %s does not exist", x.Op))
+		case SHL_ASSIGN, SHR_ASSIGN:
+			if !isWhole(rt) {
+				panic(fmt.Sprintf("invalid operation: invalid shift count: %v", x.Rhs[0]))
+			}
+			_, ric := x.Rhs[0].(*ConstExpr)
+			// check negative
+			if ric {
+				rv := evalConst(store, last, x.Rhs[0])
+				if rv.TypedValue.Sign() < 0 {
+					panic(fmt.Sprintf("invalid operation: negative shift count: %v", &rv.TypedValue))
+				}
+			}
+		default:
+			// do nothing
 		}
 		// like go/types, operator/type errors take precedence over
 		// target assignability.
