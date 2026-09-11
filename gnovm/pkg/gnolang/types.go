@@ -2696,8 +2696,9 @@ func isImplementedBy(gm store.GasMeter, it Type, ot Type) bool {
 // might include generics with the spec type which is concrete
 // with no generics, and update the lookup map or panic if error.
 // specTypeval is Type if spec is TypeKind.
-// NOTE: type-checking isn't strictly necessary here, as the resulting lookup
-// map gets applied to produce the ultimate param and result types.
+// No assignability check here: the caller checks every argument against the
+// specified param types right after (checkOrConvertType), so checking while
+// binding would run the interface-satisfaction walk twice per argument.
 func specifyType(store Store, n Node, lookup map[Name]Type, tmpl Type, spec Type, specTypeval Type) {
 	if isGeneric(spec) {
 		panic("spec must not be generic")
@@ -2795,9 +2796,7 @@ func specifyType(store Store, n Node, lookup map[Name]Type, tmpl Type, spec Type
 					panic("generic <%s> does not expect type kind")
 				}
 				generic := ct.Generic[:len(ct.Generic)-len(".Elem()")]
-				match, ok := lookup[generic]
-				if ok {
-					mustAssignableTo(store, n, spec, match.Elem())
+				if _, ok := lookup[generic]; ok {
 					return // ok
 				} else {
 					// Panic here, because we don't know whether T
@@ -2809,9 +2808,7 @@ func specifyType(store Store, n Node, lookup map[Name]Type, tmpl Type, spec Type
 					// return // ok
 				}
 			} else {
-				match, ok := lookup[ct.Generic]
-				if ok {
-					mustAssignableTo(store, n, spec, match)
+				if _, ok := lookup[ct.Generic]; ok {
 					return // ok
 				} else {
 					if isUntyped(spec) {

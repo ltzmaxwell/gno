@@ -186,6 +186,11 @@ func mustAssignableTo(store Store, n Node, xt, dt Type) {
 		if debug {
 			debug.Printf("checkAssignableTo fail: %v\n", err)
 		}
+		// A binary operand that fails reads as go/types reports it; the
+		// untyped-nil operand is already formatted by checkAssignableTo.
+		if bx, ok := n.(*BinaryExpr); ok && xt != nil {
+			panic(bx.mismatchedTypes(xt, dt))
+		}
 		panic(err.Error())
 	}
 }
@@ -710,17 +715,16 @@ func (x *BinaryExpr) assertShiftExprCompatible2(t Type) {
 	}
 }
 
-// AssertCompatible works as a pre-check prior to checkOrConvertType.
-// It checks against expressions to ensure the compatibility between operands and operators.
-// e.g. "a" << 1, the left hand operand is not compatible with <<, it will fail the check.
-// Overall,it efficiently filters out incompatible expressions, stopping before the next
-// checkOrConvertType() operation to optimize performance.
-// store supplies the preprocess gas meter for the EQL/NEQ operand check
-// (`S{} == i` runs the same interface-satisfaction walk as an assignment).
-func (x *BinaryExpr) AssertCompatible(store Store, lt, rt Type) {
-	xt, dt, swapped := lt, rt, false
+// AssertCompatible checks that a non-shift binary expression is well-formed
+// for its operator: the operator is defined on the operands' type and, for ==
+// and !=, that type is comparable (slice, func and map only against nil).
+// Operand assignability is not checked here: the preprocessor converts one
+// operand to the other's type through checkOrConvertType, which checks it
+// once, so a satisfaction walk is billed once per statement.
+func (x *BinaryExpr) AssertCompatible(lt, rt Type) {
+	xt, dt := lt, rt
 	if shouldSwapOnSpecificity(lt, rt) {
-		xt, dt, swapped = dt, xt, true
+		xt, dt = dt, xt
 	}
 
 	if isComparison(x.Op) {
@@ -737,80 +741,62 @@ func (x *BinaryExpr) AssertCompatible(store Store, lt, rt Type) {
 					panic(fmt.Sprintf("%v is not comparable", dt))
 				}
 			}
-			err := checkAssignableTo(store, x, xt, dt)
-			if err != nil {
-				if debug {
-					debug.Printf("checkAssignableTo fail: %v\n", err)
-				}
-				panic(fmt.Sprintf("invalid operation: (mismatched types %v and %v)", xt, dt))
-			}
 		case LSS, LEQ, GTR, GEQ:
-			if checker, ok := binaryChecker[x.Op]; ok {
-				x.checkCompatibility(store, x, xt, dt, checker, x.Op.TokenString(), swapped)
-			} else {
-				panic(fmt.Sprintf("checker for %s does not exist", x.Op))
-			}
+			x.assertOperatorDefined(dt)
 		default:
 			panic("invalid comparison operator")
 		}
 	} else {
-		if checker, ok := binaryChecker[x.Op]; ok {
-			x.checkCompatibility(store, x, xt, dt, checker, x.Op.TokenString(), swapped)
-		} else {
-			panic(fmt.Sprintf("checker for %s does not exist", x.Op))
-		}
-
-		switch x.Op {
-		case QUO, REM:
-			// special case of zero divisor
-			if isQuoOrRem(x.Op) {
-				if rcx, ok := x.Right.(*ConstExpr); ok {
-					if rcx.TypedValue.Sign() == 0 {
-						panic("invalid operation: division by zero")
-					}
-				}
-			}
-		default:
-			// do nothing
-		}
+		x.assertOperatorDefined(dt)
 	}
 }
 
-// Check compatibility of the destination type (dt) with the operator.
-// If both source type (xt) and destination type (dt) are typed:
-// Verify that xt is assignable to dt.
-// If xt is untyped:
-// The function checkOrConvertType will be invoked after this check.
-// NOTE: dt is established based on a specificity check between xt and dt,
-// confirming dt as the appropriate destination type for this context.
-func (x *BinaryExpr) checkCompatibility(store Store, n Node, xt, dt Type, checker func(t Type) bool, OpStr string, swapped bool) {
+// assertNonZeroDivisor rejects a constant zero divisor. Called after the
+// operands are checked, so a type mismatch is reported first, as in Go.
+func (x *BinaryExpr) assertNonZeroDivisor() {
+	if !isQuoOrRem(x.Op) {
+		return
+	}
+	if rcx, ok := x.Right.(*ConstExpr); ok && rcx.TypedValue.Sign() == 0 {
+		panic("invalid operation: division by zero")
+	}
+}
+
+// assertOperatorDefined panics unless x.Op is defined on dt, the more
+// specific of the two operand types.
+func (x *BinaryExpr) assertOperatorDefined(dt Type) {
+	checker, ok := binaryChecker[x.Op]
+	if !ok {
+		panic(fmt.Sprintf("checker for %s does not exist", x.Op))
+	}
 	if !checker(dt) {
-		panic(fmt.Sprintf("operator %s not defined on: %v", OpStr, kindString(dt)))
+		panic(fmt.Sprintf("operator %s not defined on: %v", x.Op.TokenString(), kindString(dt)))
 	}
+}
 
-	// display xt as "untyped nil" if nil as Go does.
-	untypedNil := func(t Type) string {
-		if t == nil {
-			return "untyped nil"
-		} else {
-			return t.String()
-		}
+// mismatchedTypes formats a failed operand check the way go/types does:
+// comparisons name only the types, in check order; other operators print the
+// expression and the operand types in source order.
+func (x *BinaryExpr) mismatchedTypes(xt, dt Type) string {
+	if x.Op == EQL || x.Op == NEQ {
+		return fmt.Sprintf("invalid operation: (mismatched types %v and %v)", xt, dt)
 	}
+	lt, lok := staticTypeOfOperand(x.Left)
+	rt, rok := staticTypeOfOperand(x.Right)
+	if !lok || !rok {
+		lt, rt = xt, dt
+	}
+	return fmt.Sprintf("invalid operation: %v (mismatched types %v and %v)", x, lt, rt)
+}
 
-	// if both typed
-	if !isUntyped(xt) && !isUntyped(dt) {
-		err := checkAssignableTo(store, n, xt, dt)
-		if err != nil {
-			if debug {
-				debug.Printf("checkAssignableTo fail: %v\n", err)
-			}
-			if swapped {
-				panic(fmt.Sprintf("invalid operation: %v (mismatched types %v and %v)", n, dt, untypedNil(xt)))
-			} else {
-				panic(fmt.Sprintf("invalid operation: %v (mismatched types %v and %v)", n, untypedNil(xt), dt))
-			}
-		}
+// staticTypeOfOperand returns the static type evalStaticTypeOf already
+// recorded on an operand, without needing the enclosing block.
+func staticTypeOfOperand(x Expr) (Type, bool) {
+	if cx, ok := x.(*ConstExpr); ok {
+		return cx.T, true
 	}
+	t, ok := x.GetAttribute(ATTR_TYPEOF_VALUE).(Type)
+	return t, ok
 }
 
 func (x *UnaryExpr) AssertCompatible(t Type) {

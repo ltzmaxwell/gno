@@ -1530,69 +1530,54 @@ func preprocess1(store Store, ctx BlockNode, n Node) Node {
 				}
 
 				// General cases.
-				n.AssertCompatible(store, lt, rt) // check compatibility against binaryExprs other than shift expr
+				// Operator checks only; each branch below converts and
+				// checks one operand through checkOrConvertType.
+				n.AssertCompatible(lt, rt)
 				if lic {
 					if ric {
 						// Left const, Right const ----------------------
 						// Replace with *ConstExpr if const operands.
 						//
-						// First, convert untyped as necessary.
-						// If either is interface type no conversion is required.
+						// First, convert untyped as necessary. An interface-typed
+						// const (a typed nil) is checked but not converted.
 						if (lt == nil || lt.Kind() != InterfaceKind) &&
 							(rt == nil || rt.Kind() != InterfaceKind) {
-							if !shouldSwapOnSpecificity(lcx.T, rcx.T) {
-								// convert n.Left to right type.
-								checkOrConvertType(store, last, n, &n.Left, rt)
-							} else {
-								// convert n.Right to left type.
-								checkOrConvertType(store, last, n, &n.Right, lt)
-							}
+							checkOrConvertOperands(store, last, n, lt, rt)
+						} else {
+							checkOperands(store, n, lt, rt)
 						}
+						n.assertNonZeroDivisor()
 						// Then, evaluate the expression.
 						cx := evalConst(store, last, n)
 						return cx, TRANS_CONTINUE
 					} else if isUntyped(lcx.T) {
 						if !isUntyped(rt) { // right is typed
 							checkOrConvertType(store, last, n, &n.Left, rt)
-						} else if n.Op == EQL || n.Op == NEQ {
-							// both untyped.
-							// no push context type to == != expr.
-							// fall through to default type of left or right.
-							dt := defaultTypeOf(rt)
-							if shouldSwapOnSpecificity(lt, rt) {
-								dt = defaultTypeOf(lt)
-							}
-							checkOrConvertType(store, last, n, &n.Right, dt)
-							checkOrConvertType(store, last, n, &n.Left, dt)
+						} else if n.Op == EQL || n.Op == NEQ { // both untyped.
+							convertUntypedOperands(store, last, n, lt, rt)
 						}
 					} else if lcx.T == nil { // LHS is nil.
 						// convert n.Left to typed-nil type.
 						checkOrConvertType(store, last, n, &n.Left, rt)
-					} else {
-						if isUntyped(rt) {
-							checkOrConvertType(store, last, n, &n.Right, lt)
-						}
+					} else if isUntyped(rt) { // left typed const, right untyped.
+						checkOrConvertType(store, last, n, &n.Right, lt)
+					} else { // left typed const, right typed non-const.
+						checkOrConvertOperands(store, last, n, lt, rt)
 					}
 				} else if ric { // right is const, left is not
 					if isUntyped(rcx.T) {
 						if !isUntyped(lt) { // left is typed non-const, right is untyped const.
 							checkOrConvertType(store, last, n, &n.Right, lt)
 						} else if n.Op == EQL || n.Op == NEQ { // both untyped.
-							// both untyped.
-							// no push context type to == != expr.
-							// fall through to default type of left or right.
-							dt := defaultTypeOf(rt)
-							if shouldSwapOnSpecificity(lt, rt) {
-								dt = defaultTypeOf(lt)
-							}
-							checkOrConvertType(store, last, n, &n.Right, dt)
-							checkOrConvertType(store, last, n, &n.Left, dt)
+							convertUntypedOperands(store, last, n, lt, rt)
 						}
 					} else if rcx.T == nil { // RHS is nil
 						// refer to tests/files/types/eql_0f20.gno
 						checkOrConvertType(store, last, n, &n.Right, lt)
 					} else if isUntyped(lt) { // left is not const, right is typed const
 						checkOrConvertType(store, last, n, &n.Left, rt)
+					} else { // left typed non-const, right typed const.
+						checkOrConvertOperands(store, last, n, lt, rt)
 					}
 				} else {
 					// Left not const, Right not const ------------------
@@ -1614,13 +1599,10 @@ func preprocess1(store Store, ctx BlockNode, n Node) Node {
 					} else if riu { // left typed, right untyped
 						checkOrConvertType(store, last, n, &n.Right, lt)
 					} else { // both typed, refer to 0a1g.gno
-						if !shouldSwapOnSpecificity(lt, rt) {
-							checkOrConvertType(store, last, n, &n.Left, rt)
-						} else {
-							checkOrConvertType(store, last, n, &n.Right, lt)
-						}
+						checkOrConvertOperands(store, last, n, lt, rt)
 					}
 				}
+				n.assertNonZeroDivisor()
 			// TRANS_LEAVE -----------------------
 			case *CallExpr:
 				// Func type evaluation.
@@ -4950,6 +4932,40 @@ func checkOrConvertType(store Store, last BlockNode, n Node, x *Expr, t Type) {
 	}
 	// convert recursively
 	convertType(store, last, n, x, t)
+}
+
+// checkOrConvertOperands converts the less specific of two typed operands of
+// n to the other's type, checking assignability once (see AssertCompatible).
+func checkOrConvertOperands(store Store, last BlockNode, n *BinaryExpr, lt, rt Type) {
+	if !shouldSwapOnSpecificity(lt, rt) {
+		checkOrConvertType(store, last, n, &n.Left, rt)
+	} else {
+		checkOrConvertType(store, last, n, &n.Right, lt)
+	}
+}
+
+// checkOperands asserts that the less specific of two operand types is
+// assignable to the other, without converting either operand.
+func checkOperands(store Store, n *BinaryExpr, lt, rt Type) {
+	if !shouldSwapOnSpecificity(lt, rt) {
+		mustAssignableTo(store, n, lt, rt)
+	} else {
+		mustAssignableTo(store, n, rt, lt)
+	}
+}
+
+// convertUntypedOperands handles == and != on two untyped operands, one of
+// them const. No context type reaches a comparison, so both take the default
+// type of the more specific operand; they must agree as written first, or the
+// error would name a default type the source never mentions.
+func convertUntypedOperands(store Store, last BlockNode, n *BinaryExpr, lt, rt Type) {
+	checkOperands(store, n, lt, rt)
+	dt := defaultTypeOf(rt)
+	if shouldSwapOnSpecificity(lt, rt) {
+		dt = defaultTypeOf(lt)
+	}
+	checkOrConvertType(store, last, n, &n.Right, dt)
+	checkOrConvertType(store, last, n, &n.Left, dt)
 }
 
 // 1. convert x to t if x is *ConstExpr.

@@ -53,6 +53,24 @@ func buildWideEmbedPkg(pkgName string, nEmbed int, tail string) string {
 	return b.String()
 }
 
+// writeWideIfaceTypes emits an nEmbed-method interface I, one type T%d per
+// method providing it, and a struct S embedding all of them.
+func writeWideIfaceTypes(b *strings.Builder, nEmbed int) {
+	b.WriteString("type I interface {\n")
+	for i := range nEmbed {
+		fmt.Fprintf(b, "\tM%d()\n", i)
+	}
+	b.WriteString("}\n\n")
+	for i := range nEmbed {
+		fmt.Fprintf(b, "type T%d struct{}\nfunc (T%d) M%d() {}\n", i, i, i)
+	}
+	b.WriteString("\ntype S struct {\n")
+	for i := range nEmbed {
+		fmt.Fprintf(b, "\tT%d\n", i)
+	}
+	b.WriteString("}\n\n")
+}
+
 // buildRuntimeAssertPkg returns a package whose init() performs nAssert
 // interface checks over a value of a struct S that embeds nEmbed distinct types
 // (each providing one method of the nEmbed-method interface I). The assignment
@@ -62,24 +80,7 @@ func buildRuntimeAssertPkg(pkgName string, nEmbed, nAssert int, useSwitch bool) 
 	var b strings.Builder
 	fmt.Fprintf(&b, "package %s\n\n", pkgName)
 
-	b.WriteString("type I interface {\n")
-	for i := range nEmbed {
-		fmt.Fprintf(&b, "\tM%d()\n", i)
-	}
-	b.WriteString("}\n\n")
-
-	for i := range nEmbed {
-		fmt.Fprintf(&b, "type T%d struct{}\n", i)
-		fmt.Fprintf(&b, "func (T%d) M%d() {}\n", i, i)
-	}
-	b.WriteString("\n")
-
-	b.WriteString("type S struct {\n")
-	for i := range nEmbed {
-		fmt.Fprintf(&b, "\tT%d\n", i)
-	}
-	b.WriteString("}\n\n")
-
+	writeWideIfaceTypes(&b, nEmbed)
 	b.WriteString("var e any = S{}\n")
 	b.WriteString("var sink bool\n\n")
 
@@ -209,6 +210,79 @@ func TestPreprocess_IfaceImpl_MultiAssignMetered(t *testing.T) {
 	tail.WriteString("}\n")
 	panicked, val, _ := runPkgSource(t, "multiimpl", 500_000, buildWideEmbedPkg("multiimpl", 64, tail.String()))
 	requireOOG(t, panicked, val)
+}
+
+// TestPreprocess_IfaceImpl_OneWalkPerForm pins that every syntactic form
+// converting S to I runs the satisfaction walk once per interface destination:
+// its per-statement preprocess gas must match `return S{}`. A second check on
+// the same operand (BinaryExpr.AssertCompatible + checkOrConvertType, or
+// specifyType + the argument loop) doubled it. Uses a 32-method interface so
+// one walk (≈47K gas) dwarfs per-statement allocation gas.
+func TestPreprocess_IfaceImpl_OneWalkPerForm(t *testing.T) {
+	const n, k = 32, 8
+	var head strings.Builder
+	writeWideIfaceTypes(&head, n)
+	head.WriteString("var i I\nvar s []I\nvar mp map[int]I\nfunc f(I) {}\nfunc v(...I) {}\n" +
+		"type W struct{ F I }\nvar w W\ntype R struct{}\nfunc (R) m(I) {}\nvar r R\nvar x I\n")
+	perStmt := func(name, stmt string) int64 {
+		gas := func(count int) int64 {
+			var b strings.Builder
+			fmt.Fprintf(&b, "package %s\n%s", name, head.String())
+			for i := 0; i < count; i++ {
+				fmt.Fprintf(&b, stmt, i)
+			}
+			b.WriteString("func main() {}\n")
+			p, v, g := runPkgSource(t, name, 5_000_000_000, b.String())
+			require.False(t, p, "%s: %v", name, v)
+			return g
+		}
+		return (gas(k) - gas(0)) / k
+	}
+	// walks: interface destinations per statement; 0 marks a form whose
+	// satisfaction check is a metered runtime op, not a preprocess walk.
+	forms := []struct {
+		name  string
+		walks int
+		stmt  string
+	}{
+		{"var decl pkg", 1, "var p%d I = S{}\n"},
+		{"var decl func", 1, "func a%d() { var _ I = S{} }\n"},
+		{"assign", 1, "func a%d() { x = S{} }\n"},
+		{"call arg", 1, "func a%d() { f(S{}) }\n"},
+		{"method arg", 1, "func a%d() { r.m(S{}) }\n"},
+		{"variadic arg", 1, "func a%d() { v(S{}) }\n"},
+		{"defer arg", 1, "func a%d() { defer f(S{}) }\n"},
+		{"slice lit", 1, "func a%d() { _ = []I{S{}} }\n"},
+		{"array lit", 1, "func a%d() { _ = [1]I{S{}} }\n"},
+		{"map val lit", 1, "func a%d() { _ = map[int]I{0: S{}} }\n"},
+		{"struct field lit", 1, "func a%d() { _ = W{F: S{}} }\n"},
+		{"index assign", 1, "func a%d() { s[0] = S{} }\n"},
+		{"map index assign", 1, "func a%d() { mp[0] = S{} }\n"},
+		{"field assign", 1, "func a%d() { w.F = S{} }\n"},
+		{"conversion", 1, "func a%d() { _ = I(S{}) }\n"},
+		{"S{} == i", 1, "func a%d() bool { return S{} == i }\n"},
+		{"i == S{}", 1, "func a%d() bool { return i == S{} }\n"},
+		{"S{} != i", 1, "func a%d() bool { return S{} != i }\n"},
+		{"if i == S{}", 1, "func a%d() { if i == (S{}) { } }\n"},
+		{"switch i case S{}", 1, "func a%d() { switch i { case S{}: } }\n"},
+		{"append", 1, "func a%d() { s = append(s, S{}) }\n"},
+		{"func lit return", 1, "func a%d() { _ = func() I { return S{} } }\n"},
+		{"return &S{}", 1, "func a%d() I { return &S{} }\n"},
+		{"multi var", 2, "func a%d() { var _, _ I = S{}, S{} }\n"},
+		{"multi return", 2, "func a%d() (I, I) { return S{}, S{} }\n"},
+		{"multi assign", 2, "func a%d() { var y, z I; y, z = S{}, S{}; _, _ = y, z }\n"},
+		{"type assert", 0, "func a%d() { _ = any(S{}).(I) }\n"},
+		{"type switch", 0, "func a%d() { switch any(S{}).(type) { case I: } }\n"},
+	}
+	base := perStmt("onewalkbase", "func a%d() I { return S{} }\n")
+	for idx, fm := range forms {
+		got := perStmt(fmt.Sprintf("onewalk%d", idx), fm.stmt)
+		ratio := float64(got) / float64(base)
+		t.Logf("%-20s %7d gas/stmt  x%.2f", fm.name, got, ratio)
+		lo, hi := float64(fm.walks)-0.3, float64(fm.walks)+0.5
+		require.Less(t, ratio, hi, "%s: %d gas/stmt vs %d for return S{}: an extra walk", fm.name, got, base)
+		require.Greater(t, ratio, lo, "%s: %d gas/stmt vs %d for return S{}: a walk went missing", fm.name, got, base)
+	}
 }
 
 // ---- runtime ----
