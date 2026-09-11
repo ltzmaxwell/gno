@@ -310,6 +310,66 @@ var Value error = &gasError{}`
 		require.NotContains(t, rep, `"@error"`,
 			"@error must be omitted on OOG in .Error() — graceful degrade")
 	})
+
+	t.Run("out_of_gas_in_satisfaction_walk_graceful_degrade", func(t *testing.T) {
+		// Both satisfaction checks in tryGetError (IsErrorType on the declared
+		// type, ImplError on the dynamic type) are metered embedding walks that
+		// can panic OutOfGasError, so they must run inside its recover.
+		m := gnolang.NewMachine("testdata", nil)
+		defer m.Release()
+
+		// S is an error only through its last embedded type, so deciding
+		// that walks every embedded type before it can say yes.
+		const nEmbed = 16
+		var sb strings.Builder
+		sb.WriteString("package testdata\n")
+		for i := 0; i < nEmbed; i++ {
+			fmt.Fprintf(&sb, "type T%d struct{}\n", i)
+		}
+		fmt.Fprintf(&sb, "func (T%d) Error() string { return \"boom\" }\n", nEmbed-1)
+		sb.WriteString("type S struct {\n")
+		for i := 0; i < nEmbed; i++ {
+			fmt.Fprintf(&sb, "\tT%d\n", i)
+		}
+		sb.WriteString("}\nvar Value any = S{}\n")
+
+		nn := m.MustParseFile("testdata.gno", sb.String())
+		m.RunFiles(nn)
+		m.RunDeclaration(gnolang.ImportD("testdata", "testdata"))
+		tvs := m.Eval(gnolang.Sel(gnolang.Nx("testdata"), "Value"))
+		require.Len(t, tvs, 1)
+
+		// One gas short of a walk over S: the meter dies inside whichever
+		// satisfaction check runs first, whatever the gas table says.
+		probe := stypes.NewGasMeter(1_000_000_000)
+		require.True(t, gnolang.IsErrorType(probe, tvs[0].T))
+		budget := probe.GasConsumed() - 1
+
+		// No production caller passes a signature yet (QueryEvalJSON passes
+		// nil); the declared-type case pins that branch regardless.
+		for _, tc := range []struct {
+			name string
+			ft   *gnolang.FuncType
+		}{
+			{"dynamic type", nil},
+			{"declared type", &gnolang.FuncType{Results: []gnolang.FieldType{{Type: tvs[0].T}}}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				// Control: with gas to spare the walk completes and @error is set.
+				m.GasMeter = stypes.NewGasMeter(1_000_000_000)
+				rep := mustStringifyJSONResults(t, m, tvs, tc.ft)
+				require.Contains(t, rep, `"@error":"boom"`)
+
+				m.GasMeter = stypes.NewGasMeter(budget)
+				require.NotPanics(t, func() {
+					rep = mustStringifyJSONResults(t, m, tvs, tc.ft)
+				})
+				require.True(t, m.GasMeter.IsOutOfGas(), "the walk must be what ran out of gas")
+				require.Contains(t, rep, `"results":`, "results payload must be preserved")
+				require.NotContains(t, rep, `"@error"`)
+			})
+		}
+	})
 }
 
 // ============================================================================
