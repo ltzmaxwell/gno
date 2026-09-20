@@ -43,6 +43,7 @@ func PredefineFileSet(store Store, pn *PackageNode, fset *FileSet) {
 		setNodeLocations(pn.PkgPath, fn.FileName, fn)
 		initStaticBlocks(store, pn, fn)
 	}
+	pn.reserveHiddenFuncs()
 	index := newPredefineDeclIndex(pn.FileSet)
 	// NOTE: much of what follows is duplicated for a single *FileNode
 	// in the main Preprocess translation function.  Keep synced.
@@ -534,23 +535,12 @@ func initStaticBlocks2(store Store, ctx BlockNode, nn Node) {
 					}
 				} else {
 					pkg := skipFile(last).(*PackageNode)
-					// special case: package initializers get a unique suffix.
-					switch {
-					case IsPkgInitFunc(n.Name):
-						idx := pkg.GetNumNames()
-						// NOTE: use a dot for init func suffixing.
-						// this also makes them unreferenceable.
-						dname := Name(fmt.Sprintf("%s.%d", n.Name, idx))
-						n.Name = dname
-					case n.Name == blankIdentifier:
-						idx := pkg.GetNumNames()
-						dname := Name(fmt.Sprintf("._%d", idx))
-						n.Name = dname
+					if IsPkgInitFunc(n.Name) || n.Name == blankIdentifier {
+						// Reserved last; see PackageNode.reserveHiddenFuncs.
+						pkg.pendingHidden = append(pkg.pendingHidden, n)
+					} else {
+						pkg.reserveFuncDecl(n)
 					}
-					nx := &n.NameExpr
-					nx.Type = NameExprTypeDefine
-					pkg.Reserve(false, nx, n, NSFuncDecl, -1)
-					pkg.UnassignableNames = append(pkg.UnassignableNames, n.Name)
 				}
 			case *FuncTypeExpr:
 				for i := range n.Params {
@@ -744,6 +734,9 @@ func Preprocess(store Store, ctx BlockNode, n Node) Node {
 	// NOTE: need to use Transcribe() here instead of `bn, ok := n.(BlockNode)`
 	// because say n may be a *CallExpr containing an anonymous function.
 	initStaticBlocks(store, ctx, n)
+	if pn, ok := skipFile(ctx).(*PackageNode); ok {
+		pn.reserveHiddenFuncs()
+	}
 	defer func() {
 		Transcribe(n,
 			func(ns []Node, ftype TransField, index int, n Node, stage TransStage) (Node, TransCtrl) {

@@ -646,28 +646,42 @@ func stampGnomod(gm *gnomod.File, mpkg *std.MemPackage, pkgPath string, creator 
 // runs them so a package cannot be parked to dodge a rule the normal path
 // enforces, and enable runs them again because the world can move between the
 // two messages -- see the call site there.
-// liveGm is the gnomod.toml of the PRIVATE package already occupying pkgPath,
-// nil when none does; height is the block the rules are evaluated against.
+// liveGm is the gnomod.toml of the private or upgradeable package already
+// occupying pkgPath, nil when none does; height is the block the rules are
+// evaluated against.
 func checkGnomodConstraints(gm *gnomod.File, mpkg *std.MemPackage, pkgPath string, liveGm *gnomod.File, height int64) error {
 	// no development packages.
 	if gm.HasReplaces() {
 		return ErrInvalidPackage("development packages are not allowed")
 	}
-	if gm.Private && !gno.IsRealmPath(pkgPath) {
-		return ErrInvalidPackage("private packages must be realm packages")
+	if gm.Mutable() && !gno.IsRealmPath(pkgPath) {
+		return ErrInvalidPackage("private or upgradeable packages must be realm packages")
 	}
 	if gm.Version < 0 {
 		return ErrInvalidPackage("version in gnomod.toml must not be negative")
 	}
-	if gm.Version > 0 && !gm.Private {
-		return ErrInvalidPackage("version in gnomod.toml requires private = true")
+	// A version needs a way to redeploy, except on the redeploy that drops
+	// the authority: that one carries the state and freezes the realm.
+	if gm.Version > 0 && !gm.Mutable() && liveGm == nil {
+		return ErrInvalidPackage("version in gnomod.toml requires private = true or an [upgrade] authority")
+	}
+	if gm.Upgradeable() {
+		if gm.Version == 0 {
+			return ErrInvalidPackage("an [upgrade] authority in gnomod.toml requires version")
+		}
+		if _, err := crypto.AddressFromBech32(gm.Upgrade.Authority); err != nil {
+			return ErrInvalidPackage("invalid [upgrade] authority in gnomod.toml: " + err.Error())
+		}
 	}
 	if liveGm != nil {
-		if !gm.Private {
+		if liveGm.Private && !gm.Private {
 			return ErrInvalidPackage("a private package cannot be overridden by a public package")
 		}
-		// Version unset on both sides is the old redeploy, which starts the
-		// globals over; stepping it by exactly one carries them.
+		if !liveGm.Private && gm.Private {
+			return ErrInvalidPackage("an upgradeable package cannot become private")
+		}
+		// Version unset on both sides is the old private redeploy, which
+		// starts the globals over; stepping it by exactly one carries them.
 		if (gm.Version != 0 || liveGm.Version != 0) && gm.Version != liveGm.Version+1 {
 			return ErrInvalidPackage(fmt.Sprintf(
 				"redeploying %s needs version = %d in gnomod.toml, got %d",
@@ -717,9 +731,10 @@ func parseLiveGnomod(live *std.MemPackage, pkgPath string) (*gnomod.File, error)
 	return gm, nil
 }
 
-// checkRedeployPermission refuses unless a submission replacing the live PRIVATE
-// package at pkgPath comes from the address that deployed it. creator is the
-// address the submission would record as the new creator: the message signer on
+// checkRedeployPermission refuses unless a submission replacing the live
+// package at pkgPath comes from its upgrade authority, or, for a private
+// package, from the address that deployed it. creator is the address the
+// submission would record as the new creator: the message signer on
 // AddPackage, and the parked blob's stamped creator on EnablePackage, which is
 // the identity init() runs as.
 //
@@ -730,6 +745,13 @@ func parseLiveGnomod(live *std.MemPackage, pkgPath string) (*gnomod.File, error)
 // Both call sites waive this during genesis delivery; the AddPackage one says
 // why.
 func checkRedeployPermission(liveGm *gnomod.File, pkgPath string, creator crypto.Address) error {
+	if liveGm.Upgradeable() {
+		if liveGm.Upgrade.Authority != creator.String() {
+			return ErrPkgAlreadyExists(fmt.Sprintf(
+				"only the upgrade authority %s may redeploy %s", liveGm.Upgrade.Authority, pkgPath))
+		}
+		return nil
+	}
 	if liveGm.AddPkg.Creator != creator.String() {
 		return ErrPkgAlreadyExists(fmt.Sprintf(
 			"private package already deployed at %s by %s", pkgPath, liveGm.AddPkg.Creator))
@@ -812,15 +834,17 @@ func (vm *VMKeeper) AddPackage(ctx sdk.Context, msg MsgAddPackage) (err error) {
 		return ErrInvalidPackage(err.Error())
 	}
 	pv := gnostore.GetPackage(pkgPath, false)
-	// The live package's gnomod.toml on a private redeploy, nil otherwise.
+	// The live package's gnomod.toml on a redeploy, nil otherwise. A path is
+	// redeployable when its live package is private or names an upgrade
+	// authority; anything else is permanent.
 	var liveGm *gnomod.File
 	if pv != nil {
-		if !pv.Private {
-			return ErrPkgAlreadyExists("package already exists: " + pkgPath)
-		}
 		liveGm, err = parseLiveGnomod(gnostore.GetMemPackage(pkgPath), pkgPath)
 		if err != nil {
 			return err
+		}
+		if !liveGm.Mutable() {
+			return ErrPkgAlreadyExists("package already exists: " + pkgPath)
 		}
 		// One binding for the ordinary redeploy and the inert park below.
 		//
@@ -1076,8 +1100,8 @@ func (vm *VMKeeper) AddPackage(ctx sdk.Context, msg MsgAddPackage) (err error) {
 	}
 
 	if pv != nil {
-		// A private package is being redeployed (non-private re-adds were
-		// rejected above). Clear its prior mempackage blobs first: AddMemPackage
+		// A private or upgradeable package is being redeployed (other re-adds
+		// were rejected above). Clear its prior mempackage blobs first: AddMemPackage
 		// stores an MP*All package as a prod blob plus a #allbutprod sibling, and
 		// its conditional writes don't fully replace across both keys, so a stale
 		// sibling (or stale prod blob, if redeployed prod-less) could otherwise

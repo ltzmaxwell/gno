@@ -14,6 +14,7 @@ import (
 	"go.uber.org/multierr"
 	"golang.org/x/tools/go/ast/astutil"
 
+	"github.com/gnolang/gno/gnovm/pkg/gnomod"
 	"github.com/gnolang/gno/tm2/pkg/std"
 )
 
@@ -251,6 +252,7 @@ type gnoImporterResult struct {
 type gnoImporter struct {
 	// when importing self (from xxx_test package) include *_test.gno.
 	pkgPath   string
+	mod       *gnomod.File // the root package's gnomod.toml, once parsed
 	tcmode    TypeCheckMode
 	testing   bool             // if true, use tgetter for stdlibs.
 	getter    MemPackageGetter // used for stdlibs if !.testing, and everything else.
@@ -383,6 +385,14 @@ func (gimp *gnoImporter) ImportFrom(pkgPath, _ string, _ types.ImportMode) (gopk
 		result.pending = false
 		return nil, err
 	}
+	if mod != nil && mod.Upgradeable() && gimp.rootIsImmutableRealm() {
+		// An immutable realm may not depend on code that can change under
+		// it (CONSTITUTION, Realm Upgrading).
+		err := ImportUpgradeableError{PkgPath: pkgPath}
+		result.err = err
+		result.pending = false
+		return nil, err
+	}
 	wtests := gimp.testing && gimp.pkgPath == pkgPath
 	pkg, errs := gimp.typeCheckMemPackage(mpkg, &wtests)
 	if errs != nil {
@@ -451,6 +461,9 @@ func (gimp *gnoImporter) typeCheckMemPackage(mpkg *std.MemPackage, wtests *bool)
 	mod, err := ParseCheckGnoMod(mpkg)
 	if err != nil {
 		return nil, err
+	}
+	if mpkg.Path == gimp.pkgPath {
+		gimp.mod = mod
 	}
 	if gimp.tcmode.RequiresLatestGnoMod() {
 		if mod == nil {
@@ -758,17 +771,26 @@ type ImportError interface {
 	GetMsg() string
 }
 
-func (e ImportNotFoundError) assertImportError() {}
-func (e ImportPrivateError) assertImportError()  {}
-func (e ImportDraftError) assertImportError()    {}
-func (e ImportCycleError) assertImportError()    {}
+func (e ImportNotFoundError) assertImportError()    {}
+func (e ImportPrivateError) assertImportError()     {}
+func (e ImportUpgradeableError) assertImportError() {}
+func (e ImportDraftError) assertImportError()       {}
+func (e ImportCycleError) assertImportError()       {}
 
 var (
 	_ ImportError = ImportNotFoundError{}
 	_ ImportError = ImportPrivateError{}
+	_ ImportError = ImportUpgradeableError{}
 	_ ImportError = ImportDraftError{}
 	_ ImportError = ImportCycleError{}
 )
+
+// rootIsImmutableRealm reports whether the package being checked is a realm
+// whose code can never change: neither private nor upgradeable. Packages
+// without a gnomod.toml are not held to the rule.
+func (gimp *gnoImporter) rootIsImmutableRealm() bool {
+	return IsRealmPath(gimp.pkgPath) && gimp.mod != nil && !gimp.mod.Mutable()
+}
 
 // ImportNotFoundError implements ImportError
 type ImportNotFoundError struct {
@@ -809,6 +831,20 @@ func (e ImportPrivateError) GetMsg() string {
 }
 
 func (e ImportPrivateError) Error() string { return importErrorString(e) }
+
+// ImportUpgradeableError implements ImportError
+type ImportUpgradeableError struct {
+	Location string
+	PkgPath  string
+}
+
+func (e ImportUpgradeableError) GetLocation() string { return e.Location }
+
+func (e ImportUpgradeableError) GetMsg() string {
+	return fmt.Sprintf("import path %q is upgradeable and cannot be imported by an immutable realm", e.PkgPath)
+}
+
+func (e ImportUpgradeableError) Error() string { return importErrorString(e) }
 
 // ImportCycleError implements ImportError
 type ImportCycleError struct {

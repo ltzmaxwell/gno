@@ -187,7 +187,7 @@ func (vm *VMKeeper) EnablePackage(ctx sdk.Context, msg MsgEnablePackage) (err er
 	if liveBlob != nil {
 		var perr error
 		liveGm, perr = gnomod.ParseMemPackage(liveBlob)
-		if perr != nil || !liveGm.Private {
+		if perr != nil || !liveGm.Mutable() {
 			return ErrPkgAlreadyExists("package already exists: " + msg.PkgPath)
 		}
 	}

@@ -336,32 +336,54 @@ func assertBorrowedRealm(pkgPath string, r *Realm) {
 // NOTE: package paths not beginning with gno.land will be allowed to override,
 // to support cases of stdlibs processed through [RunMemPackagesWithOverrides].
 func (m *Machine) PreprocessAllFilesAndSaveBlockNodes() {
-	ch := m.Store.IterMemPackage()
-	for mpkg := range ch {
+	done := map[string]bool{}
+	for mpkg := range m.Store.IterMemPackage() {
 		// IterMemPackage never yields nil: its producer already skips
 		// prod-less packages before sending.
-		mpkg = MPFProd.FilterMemPackage(mpkg)
-		fset := m.ParseMemPackage(mpkg)
-		pn := NewPackageNode(Name(mpkg.Name), mpkg.Path, fset)
-		m.Store.SetBlockNode(pn)
-		PredefineFileSet(m.Store, pn, fset)
-		for _, fn := range fset.Files {
-			// Save Types to m.Store (while preprocessing).
-			fn = Preprocess(m.Store, pn, fn).(*FileNode)
-			// Save BlockNodes to m.Store.
-			SaveBlockNodes(m.Store, fn)
-		}
-		// Normally, the fileset would be added onto the
-		// package node only after runFiles(), but we cannot
-		// run files upon restart (only preprocess them).
-		// So, add them here instead.
-		// TODO: is this right?
-		if pn.FileSet == nil {
-			pn.FileSet = fset
-		}
-		// pn.FileSet != nil happens for non-realm file tests.
-		// TODO ensure the files are the same.
+		m.preprocessSavedPackage(mpkg, done)
 	}
+}
+
+// preprocessSavedPackage preprocesses mpkg once, after the packages it
+// imports: a depth-first walk of the import decls (gnomod.PkgList.Sort does
+// the same over parsed packages, which this has not yet). The index order
+// IterMemPackage yields is deploy order, which a redeploy of an imported realm
+// breaks: its entry moves after its importers.
+func (m *Machine) preprocessSavedPackage(mpkg *std.MemPackage, done map[string]bool) {
+	if done[mpkg.Path] {
+		return
+	}
+	done[mpkg.Path] = true
+	mpkg = MPFProd.FilterMemPackage(mpkg)
+	fset := m.ParseMemPackage(mpkg)
+	for _, fn := range fset.Files {
+		for _, d := range fn.Decls {
+			if id, ok := d.(*ImportDecl); ok {
+				if dep := m.Store.GetMemPackage(id.PkgPath); dep != nil {
+					m.preprocessSavedPackage(dep, done)
+				}
+			}
+		}
+	}
+	pn := NewPackageNode(Name(mpkg.Name), mpkg.Path, fset)
+	m.Store.SetBlockNode(pn)
+	PredefineFileSet(m.Store, pn, fset)
+	for _, fn := range fset.Files {
+		// Save Types to m.Store (while preprocessing).
+		fn = Preprocess(m.Store, pn, fn).(*FileNode)
+		// Save BlockNodes to m.Store.
+		SaveBlockNodes(m.Store, fn)
+	}
+	// Normally, the fileset would be added onto the
+	// package node only after runFiles(), but we cannot
+	// run files upon restart (only preprocess them).
+	// So, add them here instead.
+	// TODO: is this right?
+	if pn.FileSet == nil {
+		pn.FileSet = fset
+	}
+	// pn.FileSet != nil happens for non-realm file tests.
+	// TODO ensure the files are the same.
 }
 
 //----------------------------------------

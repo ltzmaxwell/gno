@@ -64,11 +64,24 @@ Marks the package as private and **unimportable** by any other package. Addition
 
 #### `version`
 
-An integer, for private realms only. A redeploy that steps it by exactly one
-(`version = 2` over a live `version = 1`) keeps the realm's globals instead of
-starting them over: every global is carried by name, declared types keep their
-identity, and a `migrate()` function runs once in place of `init()`. A global
-that changes type, or a version that does not step by one, is refused.
+An integer, for private or upgradeable realms. A redeploy that steps it by
+exactly one (`version = 2` over a live `version = 1`) keeps the realm's globals
+instead of starting them over: every global is carried by name, declared types
+keep their identity, and a `migrate()` function runs once in place of `init()`.
+A global that changes type, or a version that does not step by one, is refused.
+
+#### `[upgrade] authority`
+
+An address that may redeploy a **public** realm, with `version` stepping as
+above. Without it a public realm is permanent, and it cannot be added later;
+removing it in a redeploy freezes the realm for good. Importers compile against
+the realm's declaration order, so an upgradeable realm may only append
+declarations and methods. An immutable realm cannot import an upgradeable one.
+
+```toml
+[upgrade]
+authority = "g1..."
+```
 
 #### `ignore`
 

@@ -1,7 +1,6 @@
-# PRxxxx: Versioned private redeploy carries the realm's globals
+# PRxxxx: Versioned redeploy carries the realm's globals
 
-Status: proof of concept, draft PR. Design notes and the wider proposal:
-RFC #694 (closed 2024-10), #2191, #4682.
+Status: proof of concept, draft PR. Background: RFC #694, #2191, #4682.
 
 ## Context
 
@@ -22,8 +21,9 @@ package-level variable is wrapped in a heap item so that, per
 
 ## Decision
 
-A `version` field in `gnomod.toml`. A private redeploy that steps it by
-exactly one keeps the realm's state:
+A `version` field in `gnomod.toml`, and an `[upgrade] authority` that
+makes a public realm redeployable by one address. A redeploy that steps
+the version by exactly one keeps the realm's state:
 
 - `runMemPackage` reads the version itself: over a prior realm it plans
   the carry from the package still live in the store (every global by
@@ -44,11 +44,25 @@ exactly one keeps the realm's state:
   object it created.
 - `migrate()` runs once in place of `init()`. `IsPkgInitFunc` gives it
   the same unreferenceable `migrate.N` suffix as `init`.
+- Public realms: the authority alone may redeploy; absent, the path is
+  permanent and cannot become upgradeable later; dropping it freezes
+  the realm. Importers compile package selectors to block slots and
+  method selectors to method indices, so a public redeploy may only
+  append declarations and methods, checked against the prior layout: a
+  stand-in for re-preprocessing importers, which a later layout-epoch
+  design can lift. `init`, `migrate` and blank funcs are reserved after
+  every other name, so adding or dropping one moves no slot. An
+  immutable realm may not import an upgradeable one (type checker),
+  per CONSTITUTION, Realm Upgrading.
+- Node restart preprocesses a package after its imports, not in
+  package-index order, which a redeploy of an imported realm breaks.
 - Refused by the shared gnomod rules, on all three deploy paths, with
-  the realm left as it was: a version that does not step by one, or
-  without `private`. Refused by the plan: a global removed, retyped or
-  turned into a non-variable; a declared type removed or given a
-  different underlying type.
+  the realm left as it was: a version that does not step by one,
+  without `private` or an authority, or an authority without a version;
+  an upgradeable realm turning private. Refused by the plan: a global
+  removed, retyped or turned into a non-variable; a declared type
+  removed or given a different underlying type; for a public realm,
+  anything moved.
 
 Version unset on both sides is the old redeploy, unchanged.
 
@@ -57,23 +71,30 @@ Version unset on both sides is the old redeploy, unchanged.
 - New path per version (`/v2`), state copied: today's practice; cannot
   keep type identity or importers.
 - `pkg@hash` or semver in the path (#694): the path changes, so the same
-  copying follows.
-- Auto-converting "convertible" type changes (#694, thehowl): harder to
-  make deterministic than refusing and asking for a two-step migrate.
+  copying follows. Auto-converting "convertible" type changes (thehowl):
+  harder to make deterministic than refusing and a two-step migrate.
 
 ## Consequences
 
 - Axioms 1 and 2 of the design note are demonstrated end to end
   (`redeploy_versioned_state.txtar`): same path, state carried, typed
   migration, new methods on old objects, survives restart.
-- Still private-only: importers and an authority other than the creator
-  are follow-ups, as are a typed `path@N` import for reading removed or
-  retyped globals from `migrate`, appended struct fields, an
-  exported-API compatibility check, and refusing a redeploy over
-  persisted func-lit closures whose source moved.
+- Not enforced: the Constitution's second rule, that an immutable realm
+  may not persist values of an upgradeable realm's types (reachable
+  through `any`). Enforcing it at finalize needs a mutability flag on
+  the persisted package value, a proto change; reading gnomod.toml
+  there costs a full package decode per foreign realm type and put an
+  existing govdao txtar out of gas.
+- Follow-ups: a realm-path authority (governance), a typed `path@N`
+  import for reading removed or retyped globals from `migrate`, appended
+  struct fields, gnoweb showing the upgradeable flag, and refusing a
+  redeploy over persisted func-lit closures whose source moved.
+- Consensus-breaking: reserving hidden funcs last changes package
+  block slot order, so ObjectIDs, hashes and storage bytes shift (realm
+  goldens, an apphash pin, a genesis balance line re-derived). Ships
+  only with a chain upgrade.
 - The prior blocks are not deleted; that leak predates this change
   (#4949). The carried objects are re-adopted, not re-charged.
 - The inert path takes the same run and the same rules, but is not
   exercised by the new txtar.
-- `IsPkgInitFunc` is read by the VM front end only; the parser,
-  transpiler and `gno fix` still special-case `init` by name.
+- The parser, transpiler and `gno fix` still special-case `init` by name.
