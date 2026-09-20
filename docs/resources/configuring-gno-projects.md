@@ -62,6 +62,14 @@ Marks the package as private and **unimportable** by any other package. Addition
 - *This flag _does not_ provide any sort of privacy. All code is still fully
   open-source and visible to everyone, including the transactions that were used for deployments.
 
+#### `version`
+
+An integer, for private realms only. A redeploy that steps it by exactly one
+(`version = 2` over a live `version = 1`) keeps the realm's globals instead of
+starting them over: every global is carried by name, declared types keep their
+identity, and a `migrate()` function runs once in place of `init()`. A global
+that changes type, or a version that does not step by one, is refused.
+
 #### `ignore`
 
 Marks the module to be **ignored by the Gno toolchain** while still being usable

@@ -407,7 +407,7 @@ func prepareGoGno0p9(f *ast.File) (err error) {
 		switch gon := c.Node().(type) {
 		case *ast.FuncDecl:
 			name := gon.Name.String()
-			if gon.Recv == nil && (name == "main" || name == "init") {
+			if gon.Recv == nil && (name == "main" || IsPkgInitFunc(Name(name))) {
 				if len(gon.Type.Params.List) == 1 { // `cur realm`
 					gon.Type.Params.List = nil
 				} else {
@@ -594,10 +594,10 @@ func uniqueDecls(decls map[string]struct{}, gof *ast.File) {
 	kept := gof.Decls[:0]
 	for _, decl := range gof.Decls {
 		fd, ok := decl.(*ast.FuncDecl)
-		// ignore methods, init and blank functions
+		// ignore methods, initializers and blank functions
 		if ok &&
 			fd.Recv == nil &&
-			fd.Name.Name != "init" &&
+			!IsPkgInitFunc(Name(fd.Name.Name)) &&
 			fd.Name.Name != "_" {
 			// if declaration is duplicate, delete this one. doesn't
 			// matter which one (whether Go native or gno) for

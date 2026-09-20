@@ -534,15 +534,15 @@ func initStaticBlocks2(store Store, ctx BlockNode, nn Node) {
 					}
 				} else {
 					pkg := skipFile(last).(*PackageNode)
-					// special case: if n.Name == "init", assign unique suffix.
-					switch n.Name {
-					case "init":
+					// special case: package initializers get a unique suffix.
+					switch {
+					case IsPkgInitFunc(n.Name):
 						idx := pkg.GetNumNames()
 						// NOTE: use a dot for init func suffixing.
 						// this also makes them unreferenceable.
-						dname := Name(fmt.Sprintf("init.%d", idx))
+						dname := Name(fmt.Sprintf("%s.%d", n.Name, idx))
 						n.Name = dname
-					case blankIdentifier:
+					case n.Name == blankIdentifier:
 						idx := pkg.GetNumNames()
 						dname := Name(fmt.Sprintf("._%d", idx))
 						n.Name = dname
@@ -5926,8 +5926,8 @@ func tryPredefine(store Store, pkg *PackageNode, last BlockNode, d Decl, stack [
 					dt.Name, d.Name))
 			}
 		} else {
-			if d.Name == "init" {
-				panic("d.Name 'init' should have been appended with a number in initStaticBlocks")
+			if IsPkgInitFunc(d.Name) {
+				panic(fmt.Sprintf("d.Name %q should have been appended with a number in initStaticBlocks", d.Name))
 			}
 			// define package-level function.
 			ft := &FuncType{}

@@ -17,6 +17,11 @@ type File struct {
 	// It is intended to be set by the `gno` cli when initializing or upgrading a module.
 	Gno string `toml:"gno" json:"gno"`
 
+	// Version steps a private realm's redeploy: N+1 over a live N carries the
+	// realm's globals into the new code (see gnolang's upgrade.go). Zero on
+	// both sides is the old redeploy, which starts the globals over.
+	Version int `toml:"version,omitempty" json:"version,omitempty"`
+
 	// Ignore indicate that the module will be ignored by the gno toolchain but still usable in development environments.
 	Ignore bool `toml:"ignore,omitempty" json:"ignore,omitempty"`
 
