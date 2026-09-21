@@ -60,9 +60,10 @@ the version by exactly one keeps the realm's state:
   the realm left as it was: a version that does not step by one,
   without `private` or an authority, or an authority without a version;
   an upgradeable realm turning private. Refused by the plan: a global
-  removed, retyped or turned into a non-variable; a declared type
-  removed or given a different underlying type; for a public realm,
-  anything moved.
+  retyped or turned into a non-variable; a declared type removed or
+  given a different underlying type; for a public realm, anything
+  moved or removed. A private realm may drop a global; its heap item
+  is released.
 
 Version unset on both sides is the old redeploy, unchanged.
 
@@ -95,6 +96,5 @@ Version unset on both sides is the old redeploy, unchanged.
   only with a chain upgrade.
 - The prior blocks are not deleted; that leak predates this change
   (#4949). The carried objects are re-adopted, not re-charged.
-- The inert path takes the same run and the same rules, but is not
-  exercised by the new txtar.
+- The inert path takes the same run and rules, untested by the txtars.
 - The parser, transpiler and `gno fix` still special-case `init` by name.

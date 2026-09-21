@@ -4,7 +4,8 @@
 # `version = 2` over a live `version = 1`, every global is carried by name into
 # the new code, declared types keep their identity, and migrate() runs once in
 # place of init(). The state is then served by the new methods, and survives a
-# restart. A redeploy that retypes a global, or skips a version, is refused.
+# restart. A redeploy that retypes a global, or skips a version, is refused. A
+# private realm may drop a global once nothing needs it any more.
 
 gnoland start
 
@@ -63,6 +64,17 @@ gnokey query vm/qeval --data 'gno.land/r/demo/ledger.Names()'
 stdout '"alice,bob,carol"'
 gnokey query vm/qeval --data 'gno.land/r/demo/ledger.Tag()'
 stdout '"v2"'
+
+# Version 3 drops counter, which total replaced in version 2: the two-step
+# rename. Everything else is carried.
+gnokey maketx addpkg -pkgdir $WORK/v3_drop -pkgpath gno.land/r/demo/ledger -gas-fee 1000000ugnot -gas-wanted 100000000 -chainid=tendermint_test test1
+stdout OK!
+gnokey query vm/qeval --data 'gno.land/r/demo/ledger.Tag()'
+stdout '"v3"'
+gnokey query vm/qeval --data 'gno.land/r/demo/ledger.Total()'
+stdout '3000 int64'
+gnokey query vm/qeval --data 'gno.land/r/demo/ledger.LastDescribed()'
+stdout '"carol#3 via v2"'
 
 -- v1/gnomod.toml --
 module = "gno.land/r/demo/ledger"
@@ -164,6 +176,46 @@ type Entry struct {
 }
 
 func Tag() string { return "v3" }
+
+-- v3_drop/gnomod.toml --
+module = "gno.land/r/demo/ledger"
+gno = "0.9"
+private = true
+version = 3
+
+-- v3_drop/ledger.gno --
+package ledger
+
+import (
+	"strconv"
+	"strings"
+)
+
+type Entry struct {
+	Name string
+	N    int
+}
+
+func (e *Entry) Describe() string {
+	return e.Name + "#" + strconv.Itoa(e.N) + " via v2"
+}
+
+var (
+	names []string
+	last  *Entry
+	total int64
+)
+
+func Add(cur realm, name string) {
+	total += 1000
+	names = append(names, name)
+	last = &Entry{Name: name, N: int(total / 1000)}
+}
+
+func Names() string        { return strings.Join(names, ",") }
+func Total() int64         { return total }
+func LastDescribed() string { return last.Describe() }
+func Tag() string          { return "v3" }
 
 -- v9/gnomod.toml --
 module = "gno.land/r/demo/ledger"

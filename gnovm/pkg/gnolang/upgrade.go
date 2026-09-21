@@ -197,10 +197,20 @@ func (m *Machine) applyUpgradePlan(pn *PackageNode, pv *PackageValue, plan *upgr
 		pb.Values[i] = TypedValue{T: heapItemType{}, V: hiv}
 		plan.prior.Values[cv.index] = TypedValue{}
 	}
-	if name, ok := missingName(plan.vars, seen); ok {
-		panic(fmt.Sprintf("upgrade: global %s was removed; keep it declared, or migrate in two steps", name))
+	// A private realm may drop a global: its heap item is released with what
+	// it owns. A public one cannot; assertPrefix refused that above.
+	rlm := pv.GetRealm()
+	for _, name := range slices.Sorted(maps.Keys(plan.vars)) {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		cv := plan.vars[name]
+		hiv := store.GetObject(cv.oid).(*HeapItemValue)
+		hiv.DecRefCount()
+		rlm.MarkNewDeleted(hiv)
+		plan.prior.Values[cv.index] = TypedValue{}
 	}
-	pv.GetRealm().MarkDirty(plan.prior)
+	rlm.MarkDirty(plan.prior)
 }
 
 // missingName returns the smallest name in want that have lacks.

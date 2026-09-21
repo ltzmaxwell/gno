@@ -68,7 +68,8 @@ An integer, for private or upgradeable realms. A redeploy that steps it by
 exactly one (`version = 2` over a live `version = 1`) keeps the realm's globals
 instead of starting them over: every global is carried by name, declared types
 keep their identity, and a `migrate()` function runs once in place of `init()`.
-A global that changes type, or a version that does not step by one, is refused.
+A global that changes type, or a version that does not step by one, is refused;
+a private realm may drop a global it no longer needs.
 
 #### `[upgrade] authority`
 
