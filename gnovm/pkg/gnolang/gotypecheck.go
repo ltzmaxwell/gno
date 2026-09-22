@@ -417,6 +417,11 @@ func prepareGoGno0p9(f *ast.File) (err error) {
 		switch gon := c.Node().(type) {
 		case *ast.FuncDecl:
 			name := gon.Name.String()
+			// migrate follows init's rules (many declarations, not
+			// referenceable); go/types only knows them for init.
+			if gon.Recv == nil && name == "migrate" {
+				gon.Name.Name = "init"
+			}
 			if gon.Recv == nil && (name == "main" || IsPkgInitFunc(Name(name))) {
 				if len(gon.Type.Params.List) == 1 { // `cur realm`
 					gon.Type.Params.List = nil

@@ -97,4 +97,5 @@ Version unset on both sides is the old redeploy, unchanged.
 - The prior blocks are not deleted; that leak predates this change
   (#4949). The carried objects are re-adopted, not re-charged.
 - The inert path takes the same run and rules, untested by the txtars.
-- The parser, transpiler and `gno fix` still special-case `init` by name.
+- The parser and go/types treat `migrate` as `init`; the transpiler and
+  `gno fix` still special-case `init` by name.
