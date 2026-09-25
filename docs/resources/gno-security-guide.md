@@ -286,23 +286,35 @@ keep the field unexported AND don't return aliased pointers to it.
 ### 5.3 Accepting an attacker callback under your own authority
 
 ```go
-func (v *MyService) ApplyHook(fn func()) {
-    // v.state holds /r/V authority; calling fn() runs with /r/V's
-    // m.Realm. If fn is a /p/A-declared top-level function, it
-    // inherits /r/V authority and can call any /r/V method as
-    // "self".
-    fn()
+func (v *MyService) ApplyHook(fn func(*somelib.Ledger)) {
+    // v.state is /r/V-owned; calling fn runs with /r/V's m.Realm.
+    // If fn is a /p/A-declared top-level function, no borrow rule
+    // fires, so its write through the handle commits as /r/V.
+    fn(v.state)
 }
 ```
 
-The (C)-class vector. Even `func()` is dangerous — the callback's
-body can call back into your own state-mutating methods.
+The (C)-class vector. `/p/A` cannot import `/r/V`, so the callback
+reaches your state only through a `/p/`-typed handle you give it: a
+parameter, as above, or the receiver a `/p/` method such as
+`Immutable.Apply(fn)` passes along (`launderpkg`, `launderattack`,
+`zrealm_launder_rdata_mv_plainhook_apply.gno`). A bare `func()` with
+no `/p/`-typed handle has nothing to write to.
 
 **Rule**: never invoke a caller-supplied function/interface value
 while holding your own `m.Realm`. Either:
 - Type the callback parameter with one of your own `/r/V`-declared
   types so attackers can't supply a matching `/p/`-callback, OR
 - Do not invoke caller callbacks at all; design synchronous APIs.
+
+Neither remedy covers a function you declared yourself. `v.Withdraw`
+matches any slot typed with `/r/V`'s own types, and a script can pass
+it by name: `v.SetHook(cross(cur), v.Withdraw)`. It then runs from
+inside another entry point, with arguments that path chose and
+`cur.Previous()` still naming the signer. Treat every func value you
+accept or store as a way to run any of your own exported functions,
+and keep each guard in the function it protects; `AssertOriginCall`
+refuses such a frame, other guards do not.
 
 ### 5.4 Trusting an interface value without canonical-type check
 

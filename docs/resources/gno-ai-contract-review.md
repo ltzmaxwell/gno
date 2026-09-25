@@ -53,6 +53,10 @@ func ApplyHook(fn func()) { fn() }
 // RIGHT: type the callback with your own /r/-declared type so
 // /p/ code can't supply a matching implementation
 func ApplyHook(fn func(*MyState)) { fn(gState) }
+
+// STILL OPEN: the realm's own exported functions match that type,
+// and a script can pass one by name: ApplyHook(cross, Withdraw).
+// Anything reachable this way runs with arguments the hook chose.
 ```
 
 ### 5. Interface parameters need canonical-type assertion
@@ -242,6 +246,7 @@ Two cases where the swap is **wrong**, both found by making it:
 - [ ] No exported function returns a `/p/`-type pointer whose type has mutation methods
 - [ ] No exported `/p/`-struct field is itself a pointer to a type with mutation methods
 - [ ] No method accepts a `func(...)` callback with a `/p/`-typed parameter and invokes it
+- [ ] Every func value the realm accepts or stores is treated as able to run any of its own exported functions by name
 - [ ] Interface parameters from external callers are guarded with canonical-type asserts
 - [ ] No `realm`-typed value in package-level vars, struct fields, or closure captures
 - [ ] `/p/`-type fields with callback iterators are unexported
