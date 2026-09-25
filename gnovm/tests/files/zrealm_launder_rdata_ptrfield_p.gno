@@ -6,8 +6,9 @@ package launderrh_pf
 // WithPtr has `Inner *launderpkg.Immutable`. Attacker reads the
 // pointer field, then calls Apply with a /p/-declared callback.
 //
-// Same trace as embed variant: Apply borrows m.Realm to victim,
-// /p/ callback inherits that authority, write succeeds.
+// Same trace as embed variant: Apply borrows m.Realm to victim, but
+// EvilWrite entered that borrow stamped attacker (stampFuncValue) and
+// runs as attacker (rule #3), so the write is refused.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -25,4 +26,6 @@ func main(cur realm) {
 
 // Output:
 // before: ptr-orig
-// after:  pwnd-via-apply
+
+// Error:
+// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field

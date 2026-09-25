@@ -10,16 +10,14 @@ package launderrh_pdr_p_recover_pfn
 //  2. inner.RecoverApply(EvilWrite) → borrow rule #2 receiver-borrow on
 //     *launderpkg.Immutable (victim-stamped) → m.Realm = victim
 //  3. RecoverApply schedules defer { recover() } in /p/-frame
-//  4. RecoverApply calls EvilWrite(i): EvilWrite is top-level /p/
-//     fn → no borrow rule #1 (not /r/), no borrow rule #2 (no receiver) → m.Realm
-//     STAYS victim
-//  5. EvilWrite body: i.Field = ... → writes /r/-victim data under
-//     m.Realm = victim → readonly check passes → WRITE SUCCEEDS
-//  6. EvilWrite returns normally. No panic. Recover gets nil.
+//  4. RecoverApply calls EvilWrite(i): the value entered the victim
+//     borrow as an argument, so it is stamped attacker → rule #3 →
+//     m.Realm = attacker
+//  5. EvilWrite body: i.Field = ... → readonly check fails → panic
+//  6. The panic crosses a realm boundary, so RecoverApply's recover
+//     does not catch it.
 //
-// Expected: known-open Apply attack succeeds; same outcome as
-// pdr_p_defer_apply but synchronous (RecoverApply calls fn
-// synchronously, only defer is the recover hook).
+// Expected: refused; same outcome as pdr_p_defer_apply but synchronous.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -42,5 +40,6 @@ func main(cur realm) {
 
 // Output:
 // before: ptr-orig
-// rec: nil (no panic, write succeeded)
-// after:  pwnd-via-apply
+
+// Error:
+// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field

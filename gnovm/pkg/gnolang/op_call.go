@@ -378,6 +378,7 @@ func (m *Machine) doOpCall() {
 		bft = ft.BoundType()
 	}
 	args := m.popCopyArgs(bft, fr.NumArgs, fr.IsVarg, fr.Receiver)
+	m.stampCrossingArgs(fr, args)
 	// Assign parameters in forward order.
 	for i, argtv := range args {
 		b.Values[i].AssignToBlock(argtv)
@@ -786,6 +787,7 @@ func (m *Machine) doOpReturnCallDefers() {
 		m.PushOp(OpCallDeferNativeBody)
 	}
 	// Assign parameters in forward order.
+	m.stampCrossingArgs(m.LastFrame(), dfr.Args)
 	for i, arg := range dfr.Args {
 		// We need to define, but b was already populated
 		// with new empty heap items, so AssignToBlock is

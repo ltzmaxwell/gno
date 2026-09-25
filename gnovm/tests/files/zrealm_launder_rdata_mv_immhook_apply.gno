@@ -14,12 +14,11 @@ package launderrh_mv_immhook_apply
 // nothing extra over RegisterPlainHook. But: the hook can CAPTURE the
 // /p/-aliased pointer separately. The closure body is /r/-attacker
 // → borrow rule #1 → m.Realm = /r/-attacker. From there, captured.Apply
-// dispatches via borrow rule #2 to /r/-victim, then EvilWrite as
-// top-level /p/.
+// dispatches via borrow rule #2 to /r/-victim, and EvilWrite enters that
+// borrow stamped /r/-attacker, so it runs as attacker.
 //
-// Outcome: SUCCEEDS — write commits via Apply, identical primitive
-// to the PlainHook variant. The ImmHook signature does NOT provide
-// extra safety; the captured pointer carries the exploit.
+// Outcome: refused, identical to the PlainHook variant. The ImmHook
+// signature adds nothing either way; the callback's stamp decides.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -46,4 +45,6 @@ func main(cur realm) {
 
 // Output:
 // before: embed-orig
-// after:  pwnd-via-apply
+
+// Error:
+// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field

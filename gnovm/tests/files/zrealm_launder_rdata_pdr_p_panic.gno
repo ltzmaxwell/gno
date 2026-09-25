@@ -16,9 +16,9 @@ package launderrh_pdr_p_panic
 // /p/-method writes to victim-stamped pointer (recv-borrow → m.Realm
 // = victim), panic fires (cross-realm), abort. Already tested.
 //
-// Here we test the converse: /p/.PanicAfterApply calls EvilWrite
-// (succeeds), then panics. Does the post-write panic abort, or does
-// it propagate up to attacker recover normally?
+// Here we test the converse: /p/.PanicAfterApply calls EvilWrite,
+// which entered the borrow stamped attacker and runs as attacker, so
+// the readonly panic fires before PanicAfterApply's own.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -46,14 +46,10 @@ func main(cur realm) {
 	println("after: ", launderrvictim.ReadPtr())
 }
 
-// The panic post-apply originates inside a /p/-method that was
-// receiver-borrowed to victim → m.Realm at panic time = victim →
-// unwinding will cross the realm boundary back to attacker
-// → unhandled panic, transaction aborts.
-//
-// CRITICAL question: does the WRITE that succeeded inside EvilWrite
-// (before the panic) persist? Transaction abort should roll back
-// the realm transaction.
+// The readonly panic originates inside EvilWrite under a /p/-method
+// receiver-borrowed to victim → unwinding crosses the realm boundary
+// back to attacker → unhandled panic, transaction aborts. Nothing was
+// written.
 
 // Error:
-// post-apply panic
+// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field

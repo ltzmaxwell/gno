@@ -2007,6 +2007,14 @@ func (rlm *Realm) assignNewObjectID(store Store, oo Object) ObjectID {
 		// exist after the tx. When such an object is being persisted
 		// into a real realm, adopt it: re-stamp PkgID to the persisting
 		// realm so storage rent + future reads route consistently.
+		//
+		// Not a /p/ function value the run realm handed over
+		// (stampFuncValue): adopting it would make it run as this
+		// realm from the next tx on, which is the authority the stamp
+		// exists to withhold, and there is no realm left to borrow to.
+		if fv, ok := oo.(*FuncValue); ok && !fv.IsClosure && !IsEphemeralPath(fv.PkgPath) {
+			panic("cannot persist a /p/ function value handed over by an ephemeral realm: " + fv.String())
+		}
 		oo.SetPkgID(rlm.ID)
 		oid = oo.GetObjectID()
 	} else if oid.PkgID != rlm.ID && oid.PkgID.IsStdlibPkg() {

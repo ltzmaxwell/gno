@@ -88,6 +88,14 @@ implicit borrow:
      receiver shift). Implementation: the FuncValue's `PkgID` is stamped at
      `doOpFuncLit`.
 
+     A top-level `/p/` function value handed across a realm boundary, as a
+     call argument or a result, is re-stamped with the realm it came from
+     and borrows to it the same way, as if that realm had wrapped it in a
+     closure. Named in a realm's own source it still runs as that realm. A
+     `/p/` value a `maketx run` script hands over cannot be persisted, since
+     the realm it would borrow to ends with the tx. Implementation:
+     `stampFuncValue`.
+
 After an explicit cross-call, both contexts refer to the same realm. They
 diverge under either implicit borrow — realm-context stays the same, storage
 moves.

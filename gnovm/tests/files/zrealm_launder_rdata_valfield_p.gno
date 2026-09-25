@@ -5,7 +5,8 @@ package launderrh_vf
 //
 // WithVal has `Inner launderpkg.Immutable` (named, not embedded).
 // Attacker takes the address of the inner field, then calls Apply.
-// Same exploit pattern as the embed/pointer variants.
+// Same shape as the embed/pointer variants: EvilWrite enters Apply's
+// victim borrow stamped with the attacker realm, so the write is refused.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -23,4 +24,6 @@ func main(cur realm) {
 
 // Output:
 // before: val-orig
-// after:  pwnd-via-apply
+
+// Error:
+// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field

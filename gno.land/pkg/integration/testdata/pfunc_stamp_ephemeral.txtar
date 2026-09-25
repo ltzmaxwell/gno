@@ -1,0 +1,44 @@
+# A /p/ function value handed over by a `maketx run` script is stamped with
+# the script's ephemeral realm. Persisting it would adopt it into the storing
+# realm and run it as that realm from the next tx on, so finalize refuses.
+
+loadpkg gno.land/p/demo/tests/launderattack/v0
+loadpkg gno.land/r/tests/vm/launderrvictim
+
+gnoland start
+
+## A realm's own closure from a script is refused for the same reason it
+## always was; a /p/ value is refused before it can be adopted.
+! gnokey maketx run -gas-fee 1000000ugnot -gas-wanted 20000000 -chainid tendermint_test test1 $WORK/run/store_p.gno
+stderr 'cannot persist a /p/ function value handed over by an ephemeral realm'
+
+## The same value invoked in the tx that handed it over runs as the script.
+gnokey maketx run -gas-fee 1000000ugnot -gas-wanted 20000000 -chainid tendermint_test test1 $WORK/run/use_p.gno
+stdout 'OK!'
+
+-- run/store_p.gno --
+package main
+
+import (
+	"gno.land/p/demo/tests/launderattack/v0"
+	"gno.land/r/tests/vm/launderrvictim"
+)
+
+func main() {
+	launderrvictim.RegisterPlainHook(launderattack.Noop)
+}
+
+-- run/use_p.gno --
+package main
+
+import (
+	"gno.land/p/demo/tests/launderattack/v0"
+	"gno.land/p/demo/tests/launderpkg/v0"
+	"gno.land/r/tests/vm/launderrvictim"
+)
+
+func main() {
+	mine := &launderpkg.Immutable{Field: "mine"}
+	launderrvictim.ApplyTo(launderattack.EvilWrite, mine)
+	println(mine.Field)
+}

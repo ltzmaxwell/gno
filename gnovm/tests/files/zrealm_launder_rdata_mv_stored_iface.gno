@@ -10,8 +10,8 @@ package launderrh_mv_stored_iface
 //
 // Trace expectation: bound method value carries a closure-like
 // structure that retains the recv. After unbox + invoke, borrow rule #2
-// should fire and write succeeds. Method values laundered through
-// interface boxing remain dangerous.
+// fires, but EvilWrite entered that borrow stamped attacker and runs
+// as attacker (rule #3), so the write is refused whatever boxing did.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -34,4 +34,6 @@ func main(cur realm) {
 
 // Output:
 // before: embed-orig
-// after:  pwnd-via-apply
+
+// Error:
+// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field

@@ -130,10 +130,13 @@ have `Iterate(cb func(*Node) bool)` or `Apply(fn func(*Node))`.
 Inside `Apply`'s body, `m.Realm` is borrowed to `/r/V` by borrow rule #2 (the
 `*Node`'s `PkgID` is `/r/V`, since `/r/V` allocated it). The `Apply`
 body invokes `fn`. If `fn` is a top-level `/p/A.Evil` function with
-signature `func(*somelib.Node)`, **neither borrow rule fires** —
+signature `func(*somelib.Node)`, neither rule #1 nor #2 fires —
 top-level `/p/`-functions have no `/r/` declaring realm and no
-receiver. `m.Realm` stays at `/r/V` for the entire callback. Writes
-through the parameter commit under victim authority.
+receiver. What stops it is the stamp: `fn` entered the `/r/V` borrow
+as an argument from the attacker's realm, so it carries that realm and
+borrows back to it (rule #3), and the write through the parameter is
+refused. Before the stamp `m.Realm` stayed `/r/V` for the whole
+callback and the write committed.
 
 Real-world `/p/`-types with this shape include
 `nt/avl/v0/node.Iterate(cb func(*Node) bool)`,
@@ -151,15 +154,16 @@ func ApplyHook(fn func(any)) {
 ```
 
 and an attacker passes a `/p/A`-declared `fn` (a top-level
-`FuncDecl`, *not* a closure), the same gap applies: `/r/V`'s body
-holds `m.Realm = /r/V`, then dispatches to attacker code that doesn't
-trigger any borrow.
+`FuncDecl`, *not* a closure), the same shape applies: `/r/V`'s body
+holds `m.Realm = /r/V`, then dispatches to attacker code that triggers
+neither rule #1 nor #2. The stamp closes it the same way: `fn` arrived
+from the attacker's realm, so it borrows back to it and the write
+fails readonly.
 
-Closures handed in by an attacker are safe — borrow rule #3 (§2.3) borrows
-`m.Realm` back to the attacker for the body, so writes into `/r/V`
-fail readonly. The gap in (C) is narrower than it looks: it only
-applies to top-level `/p/` `FuncDecl` values, not to arbitrary
-`func()` parameters.
+Closures handed in by an attacker are safe by the same rule — borrow
+rule #3 (§2.3) borrows `m.Realm` back to the attacker for the body.
+The one value that keeps the caller's authority is a `/p/` function the
+realm names in its own source and runs itself.
 
 Defense in depth: give the callback a parameter type declared in
 `/r/V` itself, e.g. `fn func(*v.User)`. `/p/` code can't name
@@ -167,7 +171,8 @@ Defense in depth: give the callback a parameter type declared in
 under `/r/A`'s authority by borrow rule #1.
 
 Empirically verified across 60+ probe filetests:
-`gnovm/tests/files/zrealm_launder_rdata_*.gno`.
+`gnovm/tests/files/zrealm_launder_rdata_*.gno`; the Apply-callback
+probes pin the refusal.
 
 ---
 
@@ -275,8 +280,9 @@ return the containing struct as a pointer.
 
 The (B)-class vector. Even if your container is `/r/`-declared, if
 its embedded `/p/`-type has `Apply(fn func(*T))` or `Iterate(cb
-func(*Node) bool)`, attackers can launder via top-level `/p/`-fn
-callbacks.
+func(*Node) bool)`, it publishes a mutator API. A top-level `/p/`-fn
+callback handed in from outside is refused by the stamp (§3 B), so
+what remains is the rest of that surface.
 
 **Rule**: when embedding/fielding a `/p/`-type, audit its method set.
 If it has any `func(...) func(*PType)`-shaped method, treat embedding
@@ -295,8 +301,9 @@ func (v *MyService) ApplyHook(fn func()) {
 }
 ```
 
-The (C)-class vector. Even `func()` is dangerous — the callback's
-body can call back into your own state-mutating methods.
+The (C)-class vector. The stamp refuses a top-level `/p/` callback
+handed in from outside; keep the rule for the values it does not
+cover and as defense in depth.
 
 **Rule**: never invoke a caller-supplied function/interface value
 while holding your own `m.Realm`. Either:

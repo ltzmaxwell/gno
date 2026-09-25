@@ -2728,10 +2728,13 @@ func (m *Machine) PushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, is
 	// called from /r/A.init), this is /r/A — not /p/X. So borrowing
 	// to it routes correctly even when fv.PkgPath is a /p/.
 	//
-	// IsClosure gates this: top-level FuncDecls also carry a stamped
-	// PkgID (= the declaring package), but they don't represent a
-	// closed-over capability — borrow rule #1 already handles the /r/-declared
-	// case, and /p/-declared FuncDecls shouldn't shift the realm.
+	// A top-level /p/ FuncDecl carries its declaring package's PkgID and
+	// shifts nothing: /p/ code named in the caller's own source runs as
+	// the caller. The same value handed across a realm boundary is
+	// re-stamped with the realm it came from (stampFuncValue), and a
+	// realm PkgID on a non-closure is that stamp, so it borrows like a
+	// closure that realm had written. /r/-declared FuncDecls never reach
+	// here (rule #1).
 	//
 	// Stdlib-stamped closures are skipped, mirroring borrow rule #2's
 	// stdlib-receiver skip: stdlib owns no mutable state and runs with the
@@ -2740,8 +2743,7 @@ func (m *Machine) PushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, is
 	// realm. The zero-PkgID check skips closures constructed with no realm
 	// context (uverse). The equality short-circuit avoids a redundant
 	// setRealm when we're already in the closure's home.
-	if fv.IsClosure {
-		pid := fv.GetObjectInfo().ID.PkgID
+	if pid := fv.GetObjectInfo().ID.PkgID; fv.IsClosure || pid.IsRealmPkg() {
 		if !pid.IsZero() && !pid.IsStdlibPkg() && (m.Realm == nil || pid != m.Realm.ID) {
 			pkgOID := ObjectIDFromPkgID(pid)
 			if pobj := m.Store.GetObject(pkgOID); pobj != nil {
@@ -2835,6 +2837,12 @@ func (m *Machine) PopFrameAndReturn() {
 		m.Values[fr.NumValues+i] = res
 	}
 	m.Values = m.Values[:fr.NumValues+numRes]
+	// Results leaving a realm are values handed to the caller.
+	if !sameRealm(fr.LastRealm, m.Realm) {
+		for i := range numRes {
+			m.stampFuncValue(&m.Values[fr.NumValues+i], m.Realm)
+		}
+	}
 	m.Package = fr.LastPackage
 	m.setRealm(fr.LastRealm)
 	if m.Exception != nil {
@@ -2934,10 +2942,44 @@ func ownsItsStorage(r *Realm) bool {
 // for one path have to read as one realm here or a frame looks like a boundary
 // for no reason.
 func sameRealm(a, b *Realm) bool {
-	if a == nil || b == nil {
+	if a == b || a == nil || b == nil {
 		return a == b
 	}
 	return a.Path == b.Path
+}
+
+// stampFuncValue hands a top-level /p/ function value across a realm
+// boundary: tv is replaced by a copy whose PkgID is from, so invoking it
+// borrows to from (rule #3) instead of running as whoever calls it. A
+// /p/ body has no authority of its own, and the only way it can write
+// another realm's state is to be invoked by that realm on a handle it is
+// given, so the value keeps the authority of the realm that supplied it.
+// Closures already carry their creator; /r/ FuncDecls are handled by rule
+// #1; stdlib is trusted and runs as the caller; a stamped value keeps its
+// first stamp.
+func (m *Machine) stampFuncValue(tv *TypedValue, from *Realm) {
+	fv, ok := tv.V.(*FuncValue)
+	if !ok || fv.IsClosure || from == nil {
+		return
+	}
+	pid := fv.GetObjectInfo().ID.PkgID
+	if pid.IsRealmPkg() || pid.IsStdlibPkg() {
+		return
+	}
+	cp := fv.Copy(m.Alloc)
+	cp.ObjectInfo.SetPkgID(from.ID)
+	tv.V = cp
+}
+
+// stampCrossingArgs applies stampFuncValue to args entering a call whose
+// body runs in a realm other than the caller's.
+func (m *Machine) stampCrossingArgs(fr *Frame, args []TypedValue) {
+	if sameRealm(fr.LastRealm, m.Realm) {
+		return
+	}
+	for i := range args {
+		m.stampFuncValue(&args[i], fr.LastRealm)
+	}
 }
 
 func (m *Machine) NumCallBoundaryFrames() int {

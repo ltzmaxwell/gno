@@ -14,16 +14,11 @@ package launderrh_mv_plainhook_apply
 //   5. Inside h: captured.Apply(EvilWrite). Apply is a /p/-method on
 //      *launderpkg.Immutable; recv is captured *launderpkg.Immutable
 //      aliasing victim memory. borrow rule #2 → m.Realm = /r/-victim.
-//   6. EvilWrite top-level /p/ fn → no shift → write commits under
-//      victim authority.
+//   6. EvilWrite entered the Apply borrow stamped /r/-attacker → rule #3
+//      → runs as attacker → write refused.
 //
-// Outcome: SUCCEEDS — but this is just the Apply-callback attack
-// dressed up as a stored PlainHook. The exploit primitive is the
-// same (B): victim invokes /p/-callback under its own authority.
-//
-// This test isolates the storage variant of the known-open Apply
-// laundering — it does NOT add a new exploit primitive, but proves
-// that storage doesn't help safety.
+// Outcome: refused, like the plain Apply-callback attack; storing the
+// hook changes nothing either way.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -47,4 +42,6 @@ func main(cur realm) {
 
 // Output:
 // before: embed-orig
-// after:  pwnd-via-apply
+
+// Error:
+// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field

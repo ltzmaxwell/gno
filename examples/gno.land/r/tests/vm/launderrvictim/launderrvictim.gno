@@ -58,9 +58,9 @@ func ApplyHook(h func(*Immutable)) {
 // /p/-attacker code can supply such callbacks. The attacker reaches
 // the inner /p/-value (read access works), then invokes Apply with
 // a /p/-declared function pointer. Inside Apply (borrow rule #2ed
-// to /r/launderrvictim), the callback runs without any borrow rule #1 or #2
-// shift (top-level /p/ fn), so the write commits under victim
-// authority.
+// to /r/launderrvictim), the callback triggers neither rule #1 nor #2,
+// but it entered the borrow stamped with the attacker's realm and
+// borrows back to it, so the write is refused.
 
 // WithEmbed embeds launderpkg.Immutable by VALUE (method promotion
 // gives WithEmbed an .Apply method).
@@ -211,7 +211,7 @@ func PanicAfterPushDefer(h func(*Immutable)) {
 // DeferApplyHook defers an ApplyHook call. The deferred ApplyHook
 // itself runs borrow rule #1 to /r/launderrvictim, and inside the
 // callback runs as borrow rule #1 of the attacker's realm — the standard
-// known-open Apply pattern, but now triggered via defer.
+// Apply pattern, but now triggered via defer.
 func DeferApplyHook(h func(*Immutable)) {
 	defer ApplyHook(h)
 }
@@ -243,6 +243,13 @@ func CallThenPanic(h func(*Immutable)) {
 // /p/.DeferApply (deferred fn dispatches here).
 func CallPDeferApply(fn func(*launderpkg.Immutable)) {
 	gWithPtr.Inner.DeferApply(fn)
+}
+
+// ApplyTo runs a caller-supplied callback on a caller-supplied handle
+// while borrowed to the victim. A stamped /p/ callback borrows back to
+// the caller, so it may write the caller's object and not the victim's.
+func ApplyTo(fn func(*launderpkg.Immutable), i *launderpkg.Immutable) {
+	fn(i)
 }
 
 // --- Stored-hook plumbing ---

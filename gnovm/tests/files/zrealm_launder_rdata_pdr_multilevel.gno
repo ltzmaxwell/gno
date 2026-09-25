@@ -14,19 +14,16 @@ package launderrh_pdr_multilevel
 //  4. DeferApply body: schedule fn(i) as defer
 //  5. DeferApply returns → defer fires → PushFrameCall(fn, true)
 //     with LastRealm = victim (current m.Realm)
-//  6. fn is top-level /p/ EvilWrite — no borrow rule #1, no borrow rule #2 → m.Realm
-//     stays victim
-//  7. EvilWrite body: i.Field = ... writes /r/-victim data under
-//     m.Realm = victim → readonly passes → WRITE SUCCEEDS
+//  6. fn is EvilWrite, stamped attacker when CallPDeferApply took it
+//     (step 2 changed the realm) → rule #3 → m.Realm = attacker
+//  7. EvilWrite body: i.Field = ... → readonly check fails → panic
 //
 // Now CallPDeferApply returns (defer queue is empty). The /p/-frame
 // is popped, restoring m.Realm to victim (unchanged). The /r/-victim
 // frame is popped, restoring m.Realm to attacker.
 //
-// Expected: SUCCEEDS — same as the known-open Apply pattern,
-// reached through a multi-level defer chain. The defer in /p/ is
-// invoked from /r/-victim-borrowed scope, so m.Realm at callback
-// entry is /r/-victim.
+// Expected: refused. The stamp is taken at the first realm change and
+// survives the /p/ defer chain.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -43,4 +40,6 @@ func main(cur realm) {
 
 // Output:
 // before: ptr-orig
-// after:  pwnd-via-apply
+
+// Error:
+// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field

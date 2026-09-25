@@ -14,16 +14,13 @@ package launderrh_embed
 //      (*Immutable).Apply on &we.Immutable.
 //      recv's base is the WithEmbed struct, /r/launderrvictim-stamped
 //      borrow rule #2 → m.Realm = /r/launderrvictim
-//   3. Inside Apply: fn(i) calls EvilWrite (top-level /p/ fn).
-//      No borrow rule #1 (not /r/), no borrow rule #2 (no receiver) → m.Realm stays
-//      /r/launderrvictim
-//   4. Inside EvilWrite: i.Field = "..." — write to
-//      /r/launderrvictim-stamped data under /r/launderrvictim
-//      authority → SUCCEEDS.
+//   3. Inside Apply: fn(i) calls EvilWrite, which entered the borrow
+//      as an argument and was stamped /r/launderrh_embed → rule #3 →
+//      m.Realm = /r/launderrh_embed
+//   4. Inside EvilWrite: i.Field = "..." → readonly check fails → panic.
 //
-// This shows that embedding a /p/-type with Apply-style methods
-// re-opens the H-class laundering, even when victim data is
-// /r/-declared at the OUTER level.
+// Embedding a /p/-type with Apply-style methods still hands Apply the
+// victim's authority, but not a callback handed in from outside.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -41,4 +38,6 @@ func main(cur realm) {
 
 // Output:
 // before: embed-orig
-// after:  pwnd-via-apply
+
+// Error:
+// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field

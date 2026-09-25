@@ -127,14 +127,17 @@ func (EvilAnyMutator) Run(x any) {
 
 // EvilWrite is a top-level /p/-declared function value matching
 // `func(*launderpkg.Immutable)`. Top-level /p/ functions trigger
-// neither borrow rule #1 (not /r/-declared) nor borrow rule #2 (no receiver), so
-// when EvilWrite is invoked as a callback from inside a
-// borrowed-to-victim /p/-method body (e.g. Immutable.Apply, or any
-// avl.Tree.Iterate-style hook), it inherits the victim's m.Realm
-// and the write commits under victim authority.
+// neither borrow rule #1 (not /r/-declared) nor borrow rule #2 (no receiver).
+// Named in the victim's own source it would run as the victim; handed in
+// from another realm it is stamped with that realm (stampFuncValue) and
+// borrows back to it, so the write to a victim handle is refused.
 func EvilWrite(i *launderpkg.Immutable) {
 	i.Field = "pwnd-via-apply"
 }
+
+// Noop is a /p/ function value with no handle at all, for tests that
+// store a /p/ value handed over by an ephemeral run realm.
+func Noop() {}
 
 // EvilObjectWrite is the same shape but for *Object — used by tests
 // that exercise Object's mutator surface through Apply-style callbacks.

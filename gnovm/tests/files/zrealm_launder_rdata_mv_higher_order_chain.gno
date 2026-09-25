@@ -17,12 +17,11 @@ package launderrh_mv_higher_order_chain
 //    that further indirects to captured.Apply(EvilWrite).
 // 7. Apply is /p/-method, recv is /r/-victim-stamped → borrow rule #2 →
 //    m.Realm = /r/-victim during Apply.
-// 8. EvilWrite is /p/-top-level → no shift → write commits under
-//    victim authority → SUCCEEDS.
+// 8. EvilWrite entered the Apply borrow stamped /r/-attacker → rule #3
+//    → runs as attacker → write refused.
 //
-// This proves indirection chaining doesn't shield the (B) primitive.
-// As long as the captured pointer is /r/-victim-stamped, the eventual
-// .Apply call cuts through the wrapper layers.
+// Indirection chaining changes nothing either way: the callback's
+// stamp, not the wrapper layers, decides the write.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -57,4 +56,6 @@ func main(cur realm) {
 
 // Output:
 // before: embed-orig
-// after:  pwnd-via-apply
+
+// Error:
+// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field

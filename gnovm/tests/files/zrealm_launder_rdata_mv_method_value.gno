@@ -15,10 +15,11 @@ package launderrh_mv_method_value
 //      base is /r/launderrvictim-stamped.
 //   3. mv(EvilWrite) — invoke later. PushFrameCall sees stamped recv,
 //      borrow rule #2 → m.Realm = /r/launderrvictim
-//   4. EvilWrite runs as top-level /p/ fn → no shift → write commits
-//      under victim authority → SUCCEEDS.
+//   4. EvilWrite entered the victim borrow as an argument → stamped
+//      attacker → rule #3 → runs as attacker → write refused.
 //
-// Outcome confirms method values preserve receiver borrowing.
+// Method values preserve receiver borrowing; the callback's stamp, not
+// the method value, decides the write.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -37,4 +38,6 @@ func main(cur realm) {
 
 // Output:
 // before: embed-orig
-// after:  pwnd-via-apply
+
+// Error:
+// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field
