@@ -672,7 +672,7 @@ func (ds *defaultStore) SetObject(oo Object) int64 {
 	}
 	oid := oo.GetObjectID()
 	// replace children/fields with Ref.
-	o2 := copyValueWithRefs(oo)
+	o2 := copyValueWithRefs(ds.cacheObjects, oo)
 	// marshal to binary.
 	bz := amino.MustMarshalAny(o2)
 	gas := overflow.Mulp(ds.gasConfig.GasAminoEncode, store.Gas(len(bz)))

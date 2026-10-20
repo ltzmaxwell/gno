@@ -36,6 +36,7 @@ func main(cur realm) {
 // Output:
 // 2
 
+
 // Realm oplog legend (object IDs are from this run; package = crossrealm_f):
 //   :2  PackageValue (escaped, RefCount=2)
 //   :3  PackageBlock — holds the `entries` slice header
@@ -103,6 +104,16 @@ func main(cur realm) {
 //         }
 //     }
 // }
+// u[0f5bbfc9234b76166575c9723efa3e0a3b15f9f8:11](5)=
+//     @@ -2,7 +2,7 @@
+//          "ObjectInfo": {
+//              "ID": "0f5bbfc9234b76166575c9723efa3e0a3b15f9f8:11",
+//              "LastObjectSize": "357",
+//     -        "ModTime": "0",
+//     +        "ModTime": "13",
+//              "OwnerID": "0f5bbfc9234b76166575c9723efa3e0a3b15f9f8:10",
+//              "RefCount": "1"
+//          },
 // c[0f5bbfc9234b76166575c9723efa3e0a3b15f9f8:13](620)={
 //     "Data": null,
 //     "List": [
@@ -118,7 +129,7 @@ func main(cur realm) {
 //                 "@type": "/gno.PointerValue",
 //                 "Base": {
 //                     "@type": "/gno.RefValue",
-//                     "Hash": "d046411631e5bf6eabd95a26d5d5b2eff5e12d08",
+//                     "Hash": "4cd95cbff7d6c215909a6e0e8929a9f25deb6e76",
 //                     "ObjectID": "0f5bbfc9234b76166575c9723efa3e0a3b15f9f8:11"
 //                 },
 //                 "Index": "0",
@@ -169,7 +180,7 @@ func main(cur realm) {
 //                      "@type": "/gno.RefValue",
 //     -                "Hash": "76e9a606e58a861202c90ab2ba062183a805ca8e",
 //     -                "ObjectID": "0f5bbfc9234b76166575c9723efa3e0a3b15f9f8:10"
-//     +                "Hash": "992254e1ad027075482276f31ef24dddd0ffba15",
+//     +                "Hash": "748fad1ce3e857d511513777bb95f69fb15fffa5",
 //     +                "ObjectID": "0f5bbfc9234b76166575c9723efa3e0a3b15f9f8:13"
 //                  },
 //     -            "Length": "1",
@@ -179,16 +190,6 @@ func main(cur realm) {
 //                  "Offset": "0"
 //              }
 //          }
-// u[0f5bbfc9234b76166575c9723efa3e0a3b15f9f8:11](5)=
-//     @@ -2,7 +2,7 @@
-//          "ObjectInfo": {
-//              "ID": "0f5bbfc9234b76166575c9723efa3e0a3b15f9f8:11",
-//              "LastObjectSize": "357",
-//     -        "ModTime": "0",
-//     +        "ModTime": "13",
-//              "OwnerID": "0f5bbfc9234b76166575c9723efa3e0a3b15f9f8:10",
-//              "RefCount": "1"
-//          },
 // u[0f5bbfc9234b76166575c9723efa3e0a3b15f9f8:2](0)=
 //     @@ -4,7 +4,7 @@
 //              "ID": "0f5bbfc9234b76166575c9723efa3e0a3b15f9f8:2",
@@ -204,7 +205,7 @@ func main(cur realm) {
 //                  "V": {
 //                      "@type": "/gno.RefValue",
 //     -                "Hash": "3001cc01d53a7123a9707e04db0b7e27c5a2d5be",
-//     +                "Hash": "34ed0964e359d8798c8f599ad2bb7e3435d2791f",
+//     +                "Hash": "73dd72c559f5eaea071932f285c1cc95803d8fb8",
 //                      "ObjectID": "0f5bbfc9234b76166575c9723efa3e0a3b15f9f8:3"
 //                  }
 //              },
