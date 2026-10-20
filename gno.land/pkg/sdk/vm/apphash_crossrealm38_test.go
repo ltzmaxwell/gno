@@ -228,7 +228,10 @@ import (
 // gas-row change moves nothing here: gas is not committed state. Re-derived
 // after merging develop, whose own changes moved the root too, so neither
 // side's value survives.
-const expectedCrossrealm38Hash = "acd1f9ce7a9313b44b4711e4a854645d3a4a347ad2f6af3920b565dbd08414bd"
+// Hash bumped 2026-10-20: the grown backing array now persists the re-saved
+// HeapItemValue's current hash instead of the stale one it was loaded with
+// (see the u[…:11] move in the zrealm_crossrealm38.gno golden).
+const expectedCrossrealm38Hash = "07274eeff8f66498deeca6efab765d8e342a065ab8008fee0da1502f55c8ebe3"
 
 func TestAppHashCrossrealm38(t *testing.T) {
 	env := setupTestEnv()

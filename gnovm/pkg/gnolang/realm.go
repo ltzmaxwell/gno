@@ -940,6 +940,11 @@ func (rlm *Realm) markDirtyAncestors(store Store) {
 // handed to its owner realm instead (returned, in hand-over order).
 func (rlm *Realm) saveUnsavedObjects(store Store) (handed []*Realm) {
 	tids := make(map[TypeID]struct{})
+	// Lookups only; see saveDirtyRefTargets.
+	dirty := make(map[ObjectID]Object, len(rlm.updated))
+	for _, uo := range rlm.updated {
+		dirty[uo.GetObjectID()] = uo
+	}
 	for _, co := range rlm.created {
 		// for i := len(rlm.created) - 1; i >= 0; i-- {
 		// co := rlm.created[i]
@@ -949,7 +954,7 @@ func (rlm *Realm) saveUnsavedObjects(store Store) (handed []*Realm) {
 			continue
 		} else {
 			if !co.GetIsDeleted() {
-				rlm.saveUnsavedObjectRecursively(store, co, tids)
+				rlm.saveUnsavedObjectRecursively(store, co, dirty, tids)
 			}
 		}
 	}
@@ -966,7 +971,7 @@ func (rlm *Realm) saveUnsavedObjects(store Store) (handed []*Realm) {
 			rlm.assertObjectIsPublic(uo, store, tids) // a private realm's object stays rejected.
 			handed = rlm.handOverDirtyObject(store, uo, handed)
 		} else {
-			rlm.saveDirtyObjectRecursively(store, uo, tids)
+			rlm.saveDirtyObjectRecursively(store, uo, dirty, tids)
 		}
 	}
 	return handed
@@ -991,7 +996,7 @@ func (rlm *Realm) handOverDirtyObject(store Store, oo Object, handed []*Realm) [
 // the parent's RefValue carries it, so the child must be stored before
 // the parent. New children are saved through rlm.created, possibly by
 // another realm (a non-finalized id), and are not descended into here.
-func (rlm *Realm) saveDirtyObjectRecursively(store Store, oo Object, visited map[TypeID]struct{}) {
+func (rlm *Realm) saveDirtyObjectRecursively(store Store, oo Object, dirty map[ObjectID]Object, visited map[TypeID]struct{}) {
 	for _, uch := range getUnsavedChildObjects(oo) {
 		if uch.GetIsNewReal() || uch.GetIsEscaped() || uch.GetIsNewEscaped() || !uch.GetIsDirty() {
 			continue // saved through rlm.created / rlm.newEscaped
@@ -999,17 +1004,37 @@ func (rlm *Realm) saveDirtyObjectRecursively(store Store, oo Object, visited map
 		if oid := uch.GetObjectID(); !oid.IsFinalized() || oid.PkgID != rlm.ID {
 			continue // another realm's object: its own finalization saves it
 		}
-		rlm.saveDirtyObjectRecursively(store, uch, visited)
+		rlm.saveDirtyObjectRecursively(store, uch, dirty, visited)
 	}
+	rlm.saveDirtyRefTargets(store, oo, dirty, visited)
 	rlm.assertObjectIsPublic(oo, store, visited)
 	rlm.saveObject(store, oo)
 	oo.SetIsDirty(false, 0)
 }
 
+// saveDirtyRefTargets saves the rlm.updated objects (dirty, by id) that oo
+// still holds as unfilled RefValues, e.g. an existing child adopted by a
+// grown backing array: dirtied through getChildObjects2, slot never filled.
+// Same reason as saveDirtyObjectRecursively.
+func (rlm *Realm) saveDirtyRefTargets(store Store, oo Object, dirty map[ObjectID]Object, visited map[TypeID]struct{}) {
+	for _, child := range getChildObjects(oo, nil) {
+		ref, ok := child.(RefValue)
+		if !ok {
+			continue
+		}
+		uch, ok := dirty[ref.ObjectID]
+		if !ok || !uch.GetIsDirty() || uch.GetIsDeleted() ||
+			uch.GetIsEscaped() || uch.GetIsNewEscaped() {
+			continue
+		}
+		rlm.saveDirtyObjectRecursively(store, uch, dirty, visited)
+	}
+}
+
 // store unsaved children first.
 // ensure that the object and children does not have any private dependencies.
 // use a visited map to mark visited types when asserting there are no private dependencies.
-func (rlm *Realm) saveUnsavedObjectRecursively(store Store, oo Object, visited map[TypeID]struct{}) {
+func (rlm *Realm) saveUnsavedObjectRecursively(store Store, oo Object, dirty map[ObjectID]Object, visited map[TypeID]struct{}) {
 	if debugAssert {
 		if !oo.GetIsNewReal() && !oo.GetIsDirty() {
 			panic("cannot save new real or non-dirty objects")
@@ -1049,9 +1074,10 @@ func (rlm *Realm) saveUnsavedObjectRecursively(store Store, oo Object, visited m
 		if uch.GetIsEscaped() || uch.GetIsNewEscaped() {
 			// no need to save preemptively.
 		} else {
-			rlm.saveUnsavedObjectRecursively(store, uch, visited)
+			rlm.saveUnsavedObjectRecursively(store, uch, dirty, visited)
 		}
 	}
+	rlm.saveDirtyRefTargets(store, oo, dirty, visited)
 	// then, save self.
 	if oo.GetIsNewReal() {
 		// save created object.
@@ -1526,7 +1552,7 @@ func copyMethods(methods []TypedValue) []TypedValue {
 		// gets saved (e.g. from *Machine.savePackage()).
 		res[i] = TypedValue{
 			T: copyTypeWithRefs(mtv.T),
-			V: copyValueWithRefs(mtv.V),
+			V: copyValueWithRefs(nil, mtv.V),
 		}
 	}
 	return res
@@ -1659,7 +1685,7 @@ func copyTypeWithRefs(typ Type) Type {
 // persistence bytes serialization.
 // Also checks for integrity of immediate children -- they must already be
 // persistent (real), and not dirty, or else this function panics.
-func copyValueWithRefs(val Value) Value {
+func copyValueWithRefs(cached map[ObjectID]Object, val Value) Value {
 	switch cv := val.(type) {
 	case nil:
 		return nil
@@ -1682,17 +1708,17 @@ func copyValueWithRefs(val Value) Value {
 				already represented in .Base[Index]:
 				TypedValue: &TypedValue{
 					T: cv.TypedValue.T,
-					V: copyValueWithRefs(cv.TypedValue.V),
+					V: copyValueWithRefs(cached, cv.TypedValue.V),
 				},
 			*/
-			Base:  toRefValue(cv.Base),
+			Base:  toRefValue(cached, cv.Base),
 			Index: cv.Index,
 		}
 	case *ArrayValue:
 		if cv.Data == nil {
 			list := make([]TypedValue, len(cv.List))
 			for i, etv := range cv.List {
-				list[i] = refOrCopyValue(etv)
+				list[i] = refOrCopyValue(cached, etv)
 			}
 			return &ArrayValue{
 				ObjectInfo: cv.ObjectInfo.Copy(),
@@ -1706,7 +1732,7 @@ func copyValueWithRefs(val Value) Value {
 		}
 	case *SliceValue:
 		return &SliceValue{
-			Base:   toRefValue(cv.Base),
+			Base:   toRefValue(cached, cv.Base),
 			Offset: cv.Offset,
 			Length: cv.Length,
 			Maxcap: cv.Maxcap,
@@ -1714,7 +1740,7 @@ func copyValueWithRefs(val Value) Value {
 	case *StructValue:
 		fields := make([]TypedValue, len(cv.Fields))
 		for i, ftv := range cv.Fields {
-			fields[i] = refOrCopyValue(ftv)
+			fields[i] = refOrCopyValue(cached, ftv)
 		}
 		return &StructValue{
 			ObjectInfo: cv.ObjectInfo.Copy(),
@@ -1724,11 +1750,11 @@ func copyValueWithRefs(val Value) Value {
 		source := toRefNode(cv.Source)
 		var parent Value
 		if cv.Parent != nil {
-			parent = toRefValue(cv.Parent)
+			parent = toRefValue(cached, cv.Parent)
 		}
 		captures := make([]TypedValue, len(cv.Captures))
 		for i, ctv := range cv.Captures {
-			captures[i] = refOrCopyValue(ctv)
+			captures[i] = refOrCopyValue(cached, ctv)
 		}
 		// nativeBody funcs which don't come from NativeResolver (and thus don't
 		// have NativePkg/Name) can't be persisted, and should not be able
@@ -1755,9 +1781,9 @@ func copyValueWithRefs(val Value) Value {
 	case *BoundMethodValue:
 		var fnc *FuncValue // nil for a lazy interface bind (resolved at call)
 		if cv.Func != nil {
-			fnc = copyValueWithRefs(cv.Func).(*FuncValue)
+			fnc = copyValueWithRefs(cached, cv.Func).(*FuncValue)
 		}
-		rtv := refOrCopyValue(cv.Receiver)
+		rtv := refOrCopyValue(cached, cv.Receiver)
 		return &BoundMethodValue{
 			ObjectInfo: cv.ObjectInfo.Copy(),
 			Func:       fnc,
@@ -1768,8 +1794,8 @@ func copyValueWithRefs(val Value) Value {
 	case *MapValue:
 		list := &MapList{}
 		for cur := cv.List.Head; cur != nil; cur = cur.Next {
-			key2 := refOrCopyValue(cur.Key)
-			val2 := refOrCopyValue(cur.Value)
+			key2 := refOrCopyValue(cached, cur.Key)
+			val2 := refOrCopyValue(cached, cur.Value)
 			list.Append(nil, key2).Value = val2
 		}
 		return &MapValue{
@@ -1785,10 +1811,10 @@ func copyValueWithRefs(val Value) Value {
 		// which hits the cache (uverse) or the backend entry (user types).
 		return toTypeValue(refOrCopyType(cv.Type))
 	case *PackageValue:
-		block := toRefValue(cv.Block)
+		block := toRefValue(cached, cv.Block)
 		fblocks := make([]Value, len(cv.FBlocks))
 		for i, fb := range cv.FBlocks {
-			fblocks[i] = toRefValue(fb)
+			fblocks[i] = toRefValue(cached, fb)
 		}
 		return &PackageValue{
 			ObjectInfo: cv.ObjectInfo.Copy(),
@@ -1804,11 +1830,11 @@ func copyValueWithRefs(val Value) Value {
 		source := toRefNode(cv.Source)
 		vals := make([]TypedValue, len(cv.Values))
 		for i, tv := range cv.Values {
-			vals[i] = refOrCopyValue(tv)
+			vals[i] = refOrCopyValue(cached, tv)
 		}
 		var bparent Value
 		if cv.Parent != nil {
-			bparent = toRefValue(cv.Parent)
+			bparent = toRefValue(cached, cv.Parent)
 		}
 		bl := &Block{
 			ObjectInfo: cv.ObjectInfo.Copy(),
@@ -1819,11 +1845,11 @@ func copyValueWithRefs(val Value) Value {
 		}
 		return bl
 	case RefValue:
-		return cv
+		return refreshRef(cached, cv)
 	case *HeapItemValue:
 		hiv := &HeapItemValue{
 			ObjectInfo: cv.ObjectInfo.Copy(),
-			Value:      refOrCopyValue(cv.Value),
+			Value:      refOrCopyValue(cached, cv.Value),
 		}
 		return hiv
 	default:
@@ -2099,10 +2125,10 @@ func toRefNode(bn BlockNode) RefNode {
 }
 
 // should not be used outside of realm.go
-func toRefValue(val Value) RefValue {
+func toRefValue(cached map[ObjectID]Object, val Value) RefValue {
 	// TODO use type switch stmt.
 	if ref, ok := val.(RefValue); ok {
-		return ref
+		return refreshRef(cached, ref)
 	} else if oo, ok := val.(Object); ok {
 		if pv, ok := val.(*PackageValue); ok {
 			if pv.GetIsDirty() {
@@ -2173,15 +2199,44 @@ func ensureUniq(oozz ...[]Object) {
 	}
 }
 
-func refOrCopyValue(tv TypedValue) TypedValue {
+// refreshRef gives an unfilled (lazily loaded) RefValue slot the hash its
+// target currently has: the stored one is stale once the child was
+// re-saved in this transaction. Only the object cache is consulted; an
+// uncached target cannot have been modified. Mirrors toRefValue.
+func refreshRef(cached map[ObjectID]Object, ref RefValue) RefValue {
+	if ref.PkgPath != "" {
+		return ref
+	}
+	oo, ok := cached[ref.ObjectID]
+	if !ok {
+		return ref
+	}
+	if _, isPkg := oo.(*PackageValue); isPkg {
+		return ref
+	}
+	if oo.GetIsEscaped() || oo.GetIsNewEscaped() {
+		return RefValue{ObjectID: ref.ObjectID}
+	}
+	if oo.GetIsDirty() {
+		// Saved after its parent; saveDirtyObjectRecursively orders
+		// children first, so this is not expected.
+		if debugAssert {
+			panic(fmt.Sprintf("dirty child %v referenced by an object being saved", ref.ObjectID))
+		}
+		return ref
+	}
+	return RefValue{ObjectID: ref.ObjectID, Hash: oo.GetHash()}
+}
+
+func refOrCopyValue(cached map[ObjectID]Object, tv TypedValue) TypedValue {
 	if tv.T != nil {
 		tv.T = refOrCopyType(tv.T)
 	}
 	if obj, ok := tv.V.(Object); ok {
-		tv.V = toRefValue(obj)
+		tv.V = toRefValue(cached, obj)
 		return tv
 	} else {
-		tv.V = copyValueWithRefs(tv.V)
+		tv.V = copyValueWithRefs(cached, tv.V)
 		return tv
 	}
 }

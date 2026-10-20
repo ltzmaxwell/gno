@@ -317,12 +317,14 @@ func (m *Machine) doOpCall() {
 
 	// Copy *FuncValue.Captures into block
 	// NOTE: addHeapCapture in preprocess ensures order.
+	// A capture is filled in its own slot: the copy would otherwise keep
+	// a RefValue whose hash goes stale once the HIV is re-saved.
 	if len(fv.Captures) != 0 {
 		if len(fv.Captures) > len(b.Values) {
 			panic("should not happen, length of captured variables must not exceed the number of values")
 		}
 		for i := range fv.Captures {
-			b.Values[len(b.Values)-len(fv.Captures)+i] = fv.Captures[i].Copy(m.Alloc)
+			b.Values[len(b.Values)-len(fv.Captures)+i] = fillValueTV(m.Store, &fv.Captures[i]).Copy(m.Alloc)
 		}
 	}
 
@@ -784,13 +786,13 @@ func (m *Machine) doOpReturnCallDefers() {
 	// Create new block scope for defer.
 	pb := fv.GetParent(m.Store)
 	b := m.acquireBlock(fv.GetSource(m.Store), pb)
-	// Copy values from captures.
+	// Copy values from captures (filled in place, see doOpCall).
 	if len(fv.Captures) != 0 {
 		if len(fv.Captures) > len(b.Values) {
 			panic("should not happen, length of captured variables must not exceed the number of values")
 		}
 		for i := range fv.Captures {
-			b.Values[len(b.Values)-len(fv.Captures)+i] = fv.Captures[i].Copy(m.Alloc)
+			b.Values[len(b.Values)-len(fv.Captures)+i] = fillValueTV(m.Store, &fv.Captures[i]).Copy(m.Alloc)
 		}
 	}
 	m.PushBlock(b)

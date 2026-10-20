@@ -246,3 +246,51 @@ func main() {
 			"object %s: stored hash should equal HashBytes(stored bytes)", oid)
 	}
 }
+
+// A parent loaded lazily keeps its child slot as a RefValue; re-saving the
+// parent after the child changed must persist the child's new hash.
+func TestSetObjectRefreshesLazyRefHash(t *testing.T) {
+	baseStore := dbadapter.StoreConstructor(memdb.NewMemDB(), storetypes.StoreOptions{})
+	iavlStore := dbadapter.StoreConstructor(memdb.NewMemDB(), storetypes.StoreOptions{})
+	st := NewStore(NewAllocator(math.MaxInt64), baseStore, iavlStore)
+
+	pkgID := PkgIDFromPkgPath("gno.land/r/test_ref")
+	parentOID := ObjectID{PkgID: pkgID, NewTime: 1}
+	childOID := ObjectID{PkgID: pkgID, NewTime: 2}
+
+	child := &HeapItemValue{
+		ObjectInfo: ObjectInfo{ID: childOID, OwnerID: parentOID, RefCount: 1},
+		Value:      TypedValue{T: IntType},
+	}
+	child.Value.SetInt(1)
+	parent := &StructValue{
+		ObjectInfo: ObjectInfo{ID: parentOID, RefCount: 1},
+		Fields:     []TypedValue{{T: heapItemType{}, V: child}},
+	}
+	st.SetObject(child)
+	st.SetObject(parent)
+	oldHash := loadObjectHashFromDB(baseStore, childOID)
+	ref, found := findRefValueByOID(loadObjectFromDB(baseStore, parentOID), childOID)
+	require.True(t, found)
+	require.Equal(t, oldHash, ref.Hash)
+
+	// Next transaction: the parent loads with an unfilled child slot.
+	st.ClearObjectCache()
+	parent2 := st.GetObject(parentOID).(*StructValue)
+	_, isRef := parent2.Fields[0].V.(RefValue)
+	require.True(t, isRef, "child slot should stay a RefValue")
+
+	child2 := st.GetObject(childOID).(*HeapItemValue)
+	child2.Value.SetInt(2)
+	child2.SetIsDirty(true, 1)
+	st.SetObject(child2)
+	child2.SetIsDirty(false, 0)
+	newHash := loadObjectHashFromDB(baseStore, childOID)
+	require.NotEqual(t, oldHash, newHash)
+
+	parent2.SetIsDirty(true, 1)
+	st.SetObject(parent2)
+	ref, found = findRefValueByOID(loadObjectFromDB(baseStore, parentOID), childOID)
+	require.True(t, found)
+	require.Equal(t, newHash, ref.Hash, "parent must carry the child's new hash")
+}
