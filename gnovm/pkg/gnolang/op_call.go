@@ -613,8 +613,31 @@ func (m *Machine) maybeFinalize(cfr *Frame) {
 		// that realm must never be persisted: skip finalization for it.
 		// isRealmBoundary still reports the frame as a boundary for
 		// panic-routing; we just don't run FinalizeRealmTransaction.
-		m.Realm.FinalizeRealmTransaction(m.Store)
+		m.finalizeRealm(m.Realm)
 	}
+}
+
+// finalizeRealm finalizes rlm, then each realm it handed a foreign dirty
+// object to, unless a frame below the returning one still runs in that
+// realm: it then finalizes at its own boundary, after this one.
+func (m *Machine) finalizeRealm(rlm *Realm) {
+	for _, hr := range rlm.FinalizeRealmTransaction(m.Store) {
+		if !m.isRealmActive(hr) {
+			m.finalizeRealm(hr)
+		}
+	}
+}
+
+// isRealmActive reports whether a frame below the returning one (the
+// last, if any) runs in rlm. Frame i's body runs in Frames[i+1].LastRealm;
+// Frames[0].LastRealm is the machine's base realm, not a frame body.
+func (m *Machine) isRealmActive(rlm *Realm) bool {
+	for i := 1; i < len(m.Frames); i++ {
+		if lr := m.Frames[i].LastRealm; lr != nil && lr.ID == rlm.ID {
+			return true
+		}
+	}
+	return false
 }
 
 // Assumes that result values are pushed onto the Values stack.

@@ -496,7 +496,10 @@ func (rlm *Realm) MarkNewEscaped(oo Object) {
 // transactions
 
 // OpReturn calls this when exiting a realm transaction.
-func (rlm *Realm) FinalizeRealmTransaction(store Store) {
+// Returns the realms rlm handed a foreign dirty object to (see
+// handOverDirtyObject), in hand-over order: each must be finalized
+// after rlm, by Machine.finalizeRealm.
+func (rlm *Realm) FinalizeRealmTransaction(store Store) (handed []*Realm) {
 	if bm.Enabled {
 		old := bm.StartStore(bm.RealmFinalizeTx)
 		defer func() { bm.StopStore(bm.RealmFinalizeTx, old, 0) }()
@@ -552,7 +555,7 @@ func (rlm *Realm) FinalizeRealmTransaction(store Store) {
 	// hash calculation is done along the way,
 	// or via escaped-object persistence in
 	// the iavl tree.
-	rlm.saveUnsavedObjects(store)
+	handed = rlm.saveUnsavedObjects(store)
 	rlm.saveNewEscaped(store)
 	// delete all deleted objects.
 	rlm.removeDeletedObjects(store)
@@ -572,6 +575,7 @@ func (rlm *Realm) FinalizeRealmTransaction(store Store) {
 		fr.sumDiff = 0
 		store.SetPackageRealm(fr)
 	}
+	return handed
 }
 
 //----------------------------------------
@@ -585,6 +589,11 @@ func (rlm *Realm) FinalizeRealmTransaction(store Store) {
 func (rlm *Realm) processNewCreatedMarks(store Store, start int) int {
 	// Create new objects and their new descendants.
 	for _, oo := range rlm.newCreated[start:] {
+		if oo.GetObjectID().IsFinalized() {
+			// Made real by another realm's finalization; if dirty
+			// since, that realm handed it to rlm.updated.
+			continue
+		}
 		if debugAssert {
 			if oo.GetIsDirty() {
 				panic("new created mark cannot be dirty")
@@ -927,8 +936,9 @@ func (rlm *Realm) markDirtyAncestors(store Store) {
 //----------------------------------------
 // saveUnsavedObjects
 
-// Saves .created and .updated objects.
-func (rlm *Realm) saveUnsavedObjects(store Store) {
+// Saves .created and .updated objects; a foreign updated object is
+// handed to its owner realm instead (returned, in hand-over order).
+func (rlm *Realm) saveUnsavedObjects(store Store) (handed []*Realm) {
 	tids := make(map[TypeID]struct{})
 	for _, co := range rlm.created {
 		// for i := len(rlm.created) - 1; i >= 0; i-- {
@@ -950,12 +960,30 @@ func (rlm *Realm) saveUnsavedObjects(store Store) {
 			// might have happened already as child
 			// of something else created/dirty.
 			continue
+		} else if uo.GetIsDeleted() {
+			continue
+		} else if pid := uo.GetObjectID().PkgID; pid != rlm.ID && !pid.IsImmutablePkg() {
+			rlm.assertObjectIsPublic(uo, store, tids) // a private realm's object stays rejected.
+			handed = rlm.handOverDirtyObject(store, uo, handed)
 		} else {
-			if !uo.GetIsDeleted() {
-				rlm.saveDirtyObjectRecursively(store, uo, tids)
-			}
+			rlm.saveDirtyObjectRecursively(store, uo, tids)
 		}
 	}
+	return handed
+}
+
+// handOverDirtyObject moves a foreign dirty object to its owner realm's
+// updated list: the owner finalizes after rlm and saves the object's dirty
+// children (ids for new ones) first. rlm's references to it are escaped.
+func (rlm *Realm) handOverDirtyObject(store Store, oo Object, handed []*Realm) []*Realm {
+	fr := rlm.touchForeignRealm(store, oo.GetObjectID().PkgID)
+	fr.updated = append(fr.updated, oo)
+	for _, hr := range handed {
+		if hr == fr {
+			return handed
+		}
+	}
+	return append(handed, fr)
 }
 
 // saveDirtyObjectRecursively saves an updated (dirty, existing) object,
@@ -1174,7 +1202,8 @@ func (rlm *Realm) clearMarks() {
 		}
 
 		for _, oo := range rlm.newEscaped {
-			if oo.GetIsNewEscaped() {
+			// A foreign one is handed over, and escapes when its owner saves it.
+			if oo.GetIsNewEscaped() && oo.GetObjectID().PkgID == rlm.ID {
 				panic("cannot clear marks if new escaped exist")
 			}
 		}

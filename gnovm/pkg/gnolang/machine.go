@@ -655,7 +655,7 @@ func (m *Machine) RunFiles(fns ...*FileNode) {
 	}
 	m.runInitFromUpdates(pv, updates)
 	if rlm != nil {
-		rlm.FinalizeRealmTransaction(m.Store)
+		m.finalizeRealm(rlm)
 	}
 }
 
@@ -917,13 +917,13 @@ func (m *Machine) saveNewPackageValuesAndTypes() (throwaway *Realm) {
 	if pv.IsRealm() {
 		rlm := pv.Realm
 		rlm.MarkNewReal(pv)
-		rlm.FinalizeRealmTransaction(m.Store)
+		m.finalizeRealm(rlm)
 		// save package realm info.
 		m.Store.SetPackageRealm(rlm)
 	} else { // use a throwaway realm.
 		rlm := NewRealm(pv.PkgPath)
 		rlm.MarkNewReal(pv)
-		rlm.FinalizeRealmTransaction(m.Store)
+		m.finalizeRealm(rlm)
 		throwaway = rlm
 	}
 	// save declared types — only those that belong to this package.
@@ -951,11 +951,11 @@ func (m *Machine) resavePackageValues(rlm *Realm) {
 	pv := m.Package
 	if pv.IsRealm() {
 		rlm = pv.Realm
-		rlm.FinalizeRealmTransaction(m.Store)
+		m.finalizeRealm(rlm)
 		// re-save package realm info.
 		m.Store.SetPackageRealm(rlm)
 	} else { // use the throwaway realm.
-		rlm.FinalizeRealmTransaction(m.Store)
+		m.finalizeRealm(rlm)
 	}
 	// types were already saved, and should not change
 	// even after running the init function.
