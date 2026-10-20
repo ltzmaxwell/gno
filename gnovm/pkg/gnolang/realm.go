@@ -952,14 +952,30 @@ func (rlm *Realm) saveUnsavedObjects(store Store) {
 			continue
 		} else {
 			if !uo.GetIsDeleted() {
-				// No recursive save needed; child objects were already
-				// persisted via created objects.
-				rlm.assertObjectIsPublic(uo, store, tids)
-				rlm.saveObject(store, uo)
-				uo.SetIsDirty(false, 0)
+				rlm.saveDirtyObjectRecursively(store, uo, tids)
 			}
 		}
 	}
+}
+
+// saveDirtyObjectRecursively saves an updated (dirty, existing) object,
+// its dirty existing children first: dirtying clears a child's hash and
+// the parent's RefValue carries it, so the child must be stored before
+// the parent. New children are saved through rlm.created, possibly by
+// another realm (a non-finalized id), and are not descended into here.
+func (rlm *Realm) saveDirtyObjectRecursively(store Store, oo Object, visited map[TypeID]struct{}) {
+	for _, uch := range getUnsavedChildObjects(oo) {
+		if uch.GetIsNewReal() || uch.GetIsEscaped() || uch.GetIsNewEscaped() || !uch.GetIsDirty() {
+			continue // saved through rlm.created / rlm.newEscaped
+		}
+		if oid := uch.GetObjectID(); !oid.IsFinalized() || oid.PkgID != rlm.ID {
+			continue // another realm's object: its own finalization saves it
+		}
+		rlm.saveDirtyObjectRecursively(store, uch, visited)
+	}
+	rlm.assertObjectIsPublic(oo, store, visited)
+	rlm.saveObject(store, oo)
+	oo.SetIsDirty(false, 0)
 }
 
 // store unsaved children first.
@@ -2097,7 +2113,8 @@ func toRefValue(val Value) RefValue {
 					panic("non-escaped object should not have refcount > 1")
 				}
 				if oo.GetHash().IsZero() {
-					panic("non-escaped object should not have zero hash")
+					panic(fmt.Sprintf("non-escaped object should not have zero hash: %T %v (dirty=%v, refCount=%d)",
+						oo, oo.GetObjectID(), oo.GetIsDirty(), oo.GetRefCount()))
 				}
 			}
 			return RefValue{

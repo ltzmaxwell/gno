@@ -147,10 +147,11 @@ func main(cur realm) {
 //              }
 //          }
 // u[08ada09dee16d791fd406d629fe29bb0ed084a30:2](0)=
-//     @@ -44,6 +44,7 @@
+//     @@ -44,7 +44,7 @@
 //                  },
 //                  "V": {
 //                      "@type": "/gno.RefValue",
+//     -                "Hash": "4a9f43b66f354cb4dcbae93b0cbc434d1f563660",
 //     +                "Hash": "5f6210a76ff602be3d83c57b38ea679a7ea8a4e2",
 //                      "ObjectID": "08ada09dee16d791fd406d629fe29bb0ed084a30:6"
 //                  }
