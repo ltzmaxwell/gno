@@ -987,6 +987,9 @@ func (rlm *Realm) saveUnsavedObjects(store Store) (handed []*Realm) {
 // (same root as the foreign-child skip in saveDirtyObjectRecursively).
 func (rlm *Realm) handOverDirtyObject(store Store, oo Object, handed []*Realm) []*Realm {
 	fr := rlm.touchForeignRealm(store, oo.GetObjectID().PkgID)
+	// Re-stamp with the owner's clock: MarkDirty recorded rlm's, which means
+	// nothing in the owner's numbering and can run backwards for an object.
+	oo.SetIsDirty(true, fr.Time)
 	fr.updated = append(fr.updated, oo)
 	for _, hr := range handed {
 		if hr == fr {

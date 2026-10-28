@@ -130,7 +130,7 @@ func main(cur realm) {
 //     -        "ModTime": "0",
 //     -        "OwnerID": "0c8307f7bbe97fdb07b2d0fa6907b8d67517c02a:2",
 //     -        "RefCount": "1"
-//     +        "ModTime": "20",
+//     +        "ModTime": "6",
 //     +        "RefCount": "2"
 //          },
 //          "Value": {
@@ -150,7 +150,7 @@ func main(cur realm) {
 //              "IsEscaped": true,
 //              "LastObjectSize": "635",
 //     -        "ModTime": "0",
-//     +        "ModTime": "20",
+//     +        "ModTime": "6",
 //              "RefCount": "2"
 //          },
 //          "Parent": null,
