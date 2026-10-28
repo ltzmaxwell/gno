@@ -980,6 +980,9 @@ func (rlm *Realm) saveUnsavedObjects(store Store) (handed []*Realm) {
 // handOverDirtyObject moves a foreign dirty object to its owner realm's
 // updated list: the owner finalizes after rlm and saves the object's dirty
 // children (ids for new ones) first. rlm's references to it are escaped.
+// Known gap: when oo is a child of an rlm-owned object the hash chain needs
+// the owner to save first, so saving rlm's parent still meets a zero hash
+// (same root as the foreign-child skip in saveDirtyObjectRecursively).
 func (rlm *Realm) handOverDirtyObject(store Store, oo Object, handed []*Realm) []*Realm {
 	fr := rlm.touchForeignRealm(store, oo.GetObjectID().PkgID)
 	fr.updated = append(fr.updated, oo)
