@@ -973,8 +973,11 @@ func (rlm *Realm) saveDirtyObjectRecursively(store Store, oo Object, dirty map[O
 		if uch.GetIsNewReal() || uch.GetIsEscaped() || uch.GetIsNewEscaped() || !uch.GetIsDirty() {
 			continue // saved through rlm.created / rlm.newEscaped
 		}
+		// Skip a child owned by another realm; normally its own finalization
+		// saves it. Known gap: when oo itself is foreign (zrealm_crossrealm34),
+		// nothing saves the child and toRefValue then sees a zero hash.
 		if oid := uch.GetObjectID(); !oid.IsFinalized() || oid.PkgID != rlm.ID {
-			continue // another realm's object: its own finalization saves it
+			continue
 		}
 		rlm.saveDirtyObjectRecursively(store, uch, dirty, visited)
 	}
