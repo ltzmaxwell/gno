@@ -294,3 +294,34 @@ func TestSetObjectRefreshesLazyRefHash(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, newHash, ref.Hash, "parent must carry the child's new hash")
 }
+
+// A RefValue cycle (A holds B, B.Parent refers back to A) has no
+// child-before-parent save order, so the walk must report it rather than
+// recurse until the stack overflows.
+func TestSaveDirtyRefTargetsReportsCycle(t *testing.T) {
+	baseStore := dbadapter.StoreConstructor(memdb.NewMemDB(), storetypes.StoreOptions{})
+	iavlStore := dbadapter.StoreConstructor(memdb.NewMemDB(), storetypes.StoreOptions{})
+	st := NewStore(NewAllocator(math.MaxInt64), baseStore, iavlStore)
+
+	pkgID := PkgIDFromPkgPath("gno.land/r/test_cycle")
+	aOID := ObjectID{PkgID: pkgID, NewTime: 1}
+	bOID := ObjectID{PkgID: pkgID, NewTime: 2}
+
+	a := &Block{ObjectInfo: ObjectInfo{ID: aOID, RefCount: 1}}
+	b := &Block{ObjectInfo: ObjectInfo{ID: bOID, OwnerID: aOID, RefCount: 1}}
+	a.Values = []TypedValue{{T: blockType{}, V: RefValue{ObjectID: bOID}}}
+	b.Parent = RefValue{ObjectID: aOID}
+	a.SetIsDirty(true, 1)
+	b.SetIsDirty(true, 1)
+
+	rlm := NewRealm("gno.land/r/test_cycle")
+	rlm.ID = pkgID
+	rlm.updated = []Object{a, b}
+	dirty := map[ObjectID]Object{aOID: a, bOID: b}
+
+	require.PanicsWithValue(t,
+		fmt.Sprintf("save cycle through object %v", aOID),
+		func() {
+			rlm.saveDirtyObjectRecursively(st, a, dirty, map[TypeID]struct{}{}, map[ObjectID]struct{}{})
+		})
+}
