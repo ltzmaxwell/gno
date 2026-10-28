@@ -935,6 +935,8 @@ func (rlm *Realm) saveUnsavedObjects(store Store) {
 	for _, uo := range rlm.updated {
 		dirty[uo.GetObjectID()] = uo
 	}
+	// Objects whose save is in progress, to detect a reference cycle.
+	saving := make(map[ObjectID]struct{})
 	for _, co := range rlm.created {
 		// for i := len(rlm.created) - 1; i >= 0; i-- {
 		// co := rlm.created[i]
@@ -944,7 +946,7 @@ func (rlm *Realm) saveUnsavedObjects(store Store) {
 			continue
 		} else {
 			if !co.GetIsDeleted() {
-				rlm.saveUnsavedObjectRecursively(store, co, dirty, tids)
+				rlm.saveUnsavedObjectRecursively(store, co, dirty, tids, saving)
 			}
 		}
 	}
@@ -957,7 +959,7 @@ func (rlm *Realm) saveUnsavedObjects(store Store) {
 			continue
 		} else {
 			if !uo.GetIsDeleted() {
-				rlm.saveDirtyObjectRecursively(store, uo, dirty, tids)
+				rlm.saveDirtyObjectRecursively(store, uo, dirty, tids, saving)
 			}
 		}
 	}
@@ -968,7 +970,15 @@ func (rlm *Realm) saveUnsavedObjects(store Store) {
 // the parent's RefValue carries it, so the child must be stored before
 // the parent. New children are saved through rlm.created, possibly by
 // another realm (a non-finalized id), and are not descended into here.
-func (rlm *Realm) saveDirtyObjectRecursively(store Store, oo Object, dirty map[ObjectID]Object, visited map[TypeID]struct{}) {
+func (rlm *Realm) saveDirtyObjectRecursively(store Store, oo Object, dirty map[ObjectID]Object, visited map[TypeID]struct{}, saving map[ObjectID]struct{}) {
+	// saveDirtyRefTargets follows RefValue edges, which can point back up
+	// (a block's Parent). A cycle has no child-before-parent order, so
+	// breaking it here would persist the unsaved parent with a zero hash.
+	oid := oo.GetObjectID()
+	if _, ok := saving[oid]; ok {
+		panic(fmt.Sprintf("save cycle through object %v", oid))
+	}
+	saving[oid] = struct{}{}
 	for _, uch := range getUnsavedChildObjects(oo) {
 		if uch.GetIsNewReal() || uch.GetIsEscaped() || uch.GetIsNewEscaped() || !uch.GetIsDirty() {
 			continue // saved through rlm.created / rlm.newEscaped
@@ -976,22 +986,23 @@ func (rlm *Realm) saveDirtyObjectRecursively(store Store, oo Object, dirty map[O
 		// Skip a child owned by another realm; normally its own finalization
 		// saves it. Known gap: when oo itself is foreign (zrealm_crossrealm34),
 		// nothing saves the child and toRefValue then sees a zero hash.
-		if oid := uch.GetObjectID(); !oid.IsFinalized() || oid.PkgID != rlm.ID {
+		if coid := uch.GetObjectID(); !coid.IsFinalized() || coid.PkgID != rlm.ID {
 			continue
 		}
-		rlm.saveDirtyObjectRecursively(store, uch, dirty, visited)
+		rlm.saveDirtyObjectRecursively(store, uch, dirty, visited, saving)
 	}
-	rlm.saveDirtyRefTargets(store, oo, dirty, visited)
+	rlm.saveDirtyRefTargets(store, oo, dirty, visited, saving)
 	rlm.assertObjectIsPublic(oo, store, visited)
 	rlm.saveObject(store, oo)
 	oo.SetIsDirty(false, 0)
+	delete(saving, oid)
 }
 
 // saveDirtyRefTargets saves the rlm.updated objects (dirty, by id) that oo
 // still holds as unfilled RefValues, e.g. an existing child adopted by a
 // grown backing array: dirtied through getChildObjects2, slot never filled.
 // Same reason as saveDirtyObjectRecursively.
-func (rlm *Realm) saveDirtyRefTargets(store Store, oo Object, dirty map[ObjectID]Object, visited map[TypeID]struct{}) {
+func (rlm *Realm) saveDirtyRefTargets(store Store, oo Object, dirty map[ObjectID]Object, visited map[TypeID]struct{}, saving map[ObjectID]struct{}) {
 	for _, child := range getChildObjects(oo, nil) {
 		ref, ok := child.(RefValue)
 		if !ok {
@@ -1002,14 +1013,14 @@ func (rlm *Realm) saveDirtyRefTargets(store Store, oo Object, dirty map[ObjectID
 			uch.GetIsEscaped() || uch.GetIsNewEscaped() {
 			continue
 		}
-		rlm.saveDirtyObjectRecursively(store, uch, dirty, visited)
+		rlm.saveDirtyObjectRecursively(store, uch, dirty, visited, saving)
 	}
 }
 
 // store unsaved children first.
 // ensure that the object and children does not have any private dependencies.
 // use a visited map to mark visited types when asserting there are no private dependencies.
-func (rlm *Realm) saveUnsavedObjectRecursively(store Store, oo Object, dirty map[ObjectID]Object, visited map[TypeID]struct{}) {
+func (rlm *Realm) saveUnsavedObjectRecursively(store Store, oo Object, dirty map[ObjectID]Object, visited map[TypeID]struct{}, saving map[ObjectID]struct{}) {
 	if debugAssert {
 		if !oo.GetIsNewReal() && !oo.GetIsDirty() {
 			panic("cannot save new real or non-dirty objects")
@@ -1049,10 +1060,10 @@ func (rlm *Realm) saveUnsavedObjectRecursively(store Store, oo Object, dirty map
 		if uch.GetIsEscaped() || uch.GetIsNewEscaped() {
 			// no need to save preemptively.
 		} else {
-			rlm.saveUnsavedObjectRecursively(store, uch, dirty, visited)
+			rlm.saveUnsavedObjectRecursively(store, uch, dirty, visited, saving)
 		}
 	}
-	rlm.saveDirtyRefTargets(store, oo, dirty, visited)
+	rlm.saveDirtyRefTargets(store, oo, dirty, visited, saving)
 	// then, save self.
 	if oo.GetIsNewReal() {
 		// save created object.
