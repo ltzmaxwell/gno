@@ -8,7 +8,7 @@ import (
 	"gno.land/p/nt/avl/v0"
 	"gno.land/p/nt/seqid/v0"
 	"gno.land/p/nt/ufmt/v0"
-	"gno.land/p/thox/accesscontrol"
+	"gno.land/p/nt/accesscontrol/v0"
 )
 
 // Represents the status of a planned operation

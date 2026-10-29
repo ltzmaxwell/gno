@@ -1,9 +1,13 @@
+// v0 - Unaudited: This is an initial version that has not yet been formally audited.
+// A fully audited version will be published as a subsequent release.
+// Use in production at your own risk.
+//
 // Package accesscontrol implements a role-based access control (RBAC) system for Gno applications.
 // It provides functionality to create, assign, revoke, and transfer roles.
 //
 // # Usage
 //
-// Import the `gno.land/p/demo/accesscontrol` package to manage roles within your Gno realm. You can create roles,
+// Import the `gno.land/p/nt/accesscontrol/v0` package to manage roles within your Gno realm. You can create roles,
 // assign them to users, revoke them, and transfer role ownership.
 //
 // Roles can be created by the contract owner using `CreateRole`. Each role is uniquely identified by its name.

@@ -8,7 +8,7 @@ import (
 	"gno.land/p/nt/avl/v0"
 	"gno.land/p/nt/seqid/v0"
 	"gno.land/p/nt/uassert/v0"
-	"gno.land/p/thox/accesscontrol"
+	"gno.land/p/nt/accesscontrol/v0"
 )
 
 func TestTimelock(cur realm, t *testing.T) {
