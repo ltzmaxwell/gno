@@ -41,7 +41,10 @@ when it is invoked, exactly as if the sender had wrapped it in a closure.
 - Ephemeral senders: a stamp from a `maketx run` realm is fine inside the
   tx, but finalize would adopt the object into the storing realm and the
   value would run as that realm from the next tx on. `assignNewObjectID`
-  refuses to persist such a value instead.
+  refuses to persist such a value instead, and likewise a method value
+  the run realm bound on `/p/` or stdlib code, which adoption would turn
+  into one bound by the storing realm (closes #6207's known-open
+  `view_method_value_adopted.txtar`).
 
 ## Alternatives
 

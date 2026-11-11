@@ -510,10 +510,10 @@ realm binds on your view is refused wherever it runs. A method value
 your realm binds on its own ungranted object and hands out is refused
 as well when another realm's code calls it, directly or as a callback
 inside one of your granted handles: bound by the receiver's owner, it
-starts from the realm whose code makes the call. One case stays
-open: a value bound by a `maketx run` script and *stored* by your realm
-is re-stamped to your realm, so calling it later runs as you. Do not
-store and call function values that callers supply.
+starts from the realm whose code makes the call. A value bound by a
+`maketx run` script cannot be stored by your realm at all: finalize
+refuses it, since adoption would re-stamp it to you. Still, do not
+store and call function values that callers supply (§5.3).
 
 Method *expressions* (unbound: `(*T).Apply`) do not carry the
 receiver stamp. Calling `me(recv, args)` and `recv.Apply(args)`

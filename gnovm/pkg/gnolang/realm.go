@@ -2015,6 +2015,12 @@ func (rlm *Realm) assignNewObjectID(store Store, oo Object) ObjectID {
 		if fv, ok := oo.(*FuncValue); ok && !fv.IsClosure && !IsEphemeralPath(fv.PkgPath) {
 			panic("cannot persist a /p/ function value handed over by an ephemeral realm: " + fv.String())
 		}
+		// Nor a method value the run realm bound on library code: adopted,
+		// it would read as bound here and write this realm's views.
+		if bmv, ok := oo.(*BoundMethodValue); ok &&
+			(bmv.Func == nil || !IsRealmPath(bmv.Func.PkgPath) && !IsEphemeralPath(bmv.Func.PkgPath)) {
+			panic("cannot persist a method value bound by an ephemeral realm")
+		}
 		oo.SetPkgID(rlm.ID)
 		oid = oo.GetObjectID()
 	} else if oid.PkgID != rlm.ID && oid.PkgID.IsStdlibPkg() {
