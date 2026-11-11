@@ -1,6 +1,11 @@
 // PKGPATH: gno.land/r/launderrh_mv_higher_order_chain
 package launderrh_mv_higher_order_chain
 
+// UPDATED (view-by-default): a /p/-method write on an object another realm
+// owns now borrows only if the owner granted mutable(x). None of these
+// fixtures grant, so the write described below is refused; the expected
+// output pins the refusal. The original analysis is kept for context.
+
 // Higher-order indirection chain: victim calls fn that calls fn that
 // calls attacker's STORED PlainHook, which dispatches /p/-Apply
 // against a captured /r/-victim-stamped /p/-pointer.
@@ -17,11 +22,12 @@ package launderrh_mv_higher_order_chain
 //    that further indirects to captured.Apply(EvilWrite).
 // 7. Apply is /p/-method, recv is /r/-victim-stamped → borrow rule #2 →
 //    m.Realm = /r/-victim during Apply.
-// 8. EvilWrite entered the Apply borrow stamped /r/-attacker → rule #3
-//    → runs as attacker → write refused.
+// 8. EvilWrite is /p/-top-level → no shift → write commits under
+//    victim authority → SUCCEEDS.
 //
-// Indirection chaining changes nothing either way: the callback's
-// stamp, not the wrapper layers, decides the write.
+// This proves indirection chaining doesn't shield the (B) primitive.
+// As long as the captured pointer is /r/-victim-stamped, the eventual
+// .Apply call cuts through the wrapper layers.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -58,4 +64,4 @@ func main(cur realm) {
 // before: embed-orig
 
 // Error:
-// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field
+// cannot modify object owned by another realm from library code (the owner must hand it out with mutable(x), or expose a crossing function): i<VPBlock(1,0)>.Field

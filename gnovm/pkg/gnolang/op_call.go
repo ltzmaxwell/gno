@@ -35,7 +35,7 @@ func (m *Machine) doOpPrecall() {
 		if fv.IsLazy() {
 			fn, recv = resolveLazyBound(m, fv)
 		}
-		m.PushFrameCall(cx, fn, recv, false)
+		m.pushFrameCall(cx, fn, recv, methodValueBinder(cx, fv), false)
 		m.PushOp(OpCall)
 		isCrossing := fn.IsCrossing()
 		if isCrossing {
@@ -329,13 +329,7 @@ func (m *Machine) doOpCall() {
 	m.PushBlock(b)
 	m.incrCPU(OpCPUSlopeCallParam*int64(len(ft.Params)) +
 		OpCPUSlopeCallCapture*int64(len(fv.Captures)))
-	if fv.nativeBody == nil && fv.NativePkg != "" {
-		// native function, unmarshaled so doesn't have nativeBody yet
-		fv.nativeBody = m.Store.GetNative(fv.NativePkg, fv.NativeName)
-		if fv.nativeBody == nil {
-			panic(fmt.Sprintf("natively defined function (%q).%s could not be resolved", fv.NativePkg, fv.NativeName))
-		}
-	}
+	m.resolveNativeBody(fv)
 	if fv.nativeBody == nil {
 		fbody := fv.GetBodyFromSource(m.Store)
 		if len(ft.Results) == 0 {
@@ -398,6 +392,16 @@ func (m *Machine) doOpCall() {
 	// the caller-supplied rlm with a fresh uverse-pkgPath realm and
 	// trip cross's IsCurrent-strict check.
 	m.installInheritedCur(fr, fv, b)
+}
+
+func (m *Machine) resolveNativeBody(fv *FuncValue) {
+	if fv.nativeBody != nil || fv.NativePkg == "" {
+		return
+	}
+	fv.nativeBody = m.Store.GetNative(fv.NativePkg, fv.NativeName)
+	if fv.nativeBody == nil {
+		panic(fmt.Sprintf("natively defined function (%q).%s could not be resolved", fv.NativePkg, fv.NativeName))
+	}
 }
 
 // installInheritedCur gives a crossing function entered WITHOUT cross() the
@@ -687,6 +691,16 @@ func (m *Machine) doOpReturnToBlock() {
 	}
 }
 
+// methodValueBinder returns the realm stamp of a method value being called,
+// or zero for a plain x.M(...) call: that one is bound and called in one
+// step by the current realm, so it has no earlier binder to return to.
+func methodValueBinder(cx *CallExpr, bmv *BoundMethodValue) PkgID {
+	if sx, ok := cx.Func.(*SelectorExpr); ok && sx.Path.IsMethod() {
+		return PkgID{}
+	}
+	return bmv.ObjectInfo.ID.PkgID
+}
+
 func (m *Machine) doOpReturnCallDefers() {
 	cfr := m.MustPeekCallFrame(1)
 	dfr, ok := cfr.PopDefer()
@@ -726,10 +740,12 @@ func (m *Machine) doOpReturnCallDefers() {
 	// Resolve the deferred callable, mirroring doOpPrecall's dispatch.
 	var fv *FuncValue
 	var recv TypedValue // receiver for PushFrameCall: the bound receiver, or zero for a plain func
+	var bindPID PkgID
 	switch cv := dfr.Callable.(type) {
 	case *FuncValue:
 		fv = cv // plain func: no receiver, recv stays zero
 	case *BoundMethodValue:
+		bindPID = methodValueBinder(&dfr.Source.Call, cv)
 		// A lazy interface bind resolves its concrete method + receiver now, at
 		// the deferred call — Go's call-time dispatch on the operand's current
 		// value (nil derefs raise within the walk, caught by the Run loop). A
@@ -747,7 +763,7 @@ func (m *Machine) doOpReturnCallDefers() {
 
 	// Call last deferred call.
 	ft := fv.GetType(m.Store)
-	m.PushFrameCall(&dfr.Source.Call, fv, recv, true)
+	m.pushFrameCall(&dfr.Source.Call, fv, recv, bindPID, true)
 	// NOTE: the following logic is largely duplicated in doOpCall().
 	// Push final empty *ReturnStmt;
 	// TODO: transform in preprocessor instead.
@@ -768,6 +784,7 @@ func (m *Machine) doOpReturnCallDefers() {
 		}
 	}
 	m.PushBlock(b)
+	m.resolveNativeBody(fv)
 	if fv.nativeBody == nil {
 		fbody := fv.GetBodyFromSource(m.Store)
 		// Exec body.

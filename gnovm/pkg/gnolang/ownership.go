@@ -179,6 +179,10 @@ type ObjectInfo struct {
 
 	LastObjectSize int64 //
 
+	// Owner's mutable(x) grant: foreign /p/-method writes may borrow (rule #2).
+	// Amino numbers fields by position; keep after LastObjectSize (field 8).
+	IsMutable bool `json:",omitempty"`
+
 	// MemRefCount int // consider for optimizations.
 	// Object has been modified and needs to be saved
 	isDirty bool
@@ -208,6 +212,7 @@ func (oi *ObjectInfo) Copy() ObjectInfo {
 		ModTime:        oi.ModTime,
 		RefCount:       oi.RefCount,
 		IsEscaped:      oi.IsEscaped,
+		IsMutable:      oi.IsMutable,
 		LastObjectSize: oi.LastObjectSize,
 		isDirty:        oi.isDirty,
 		isDeleted:      oi.isDeleted,
@@ -299,8 +304,11 @@ func (oi *ObjectInfo) SetNewTime(t uint64) {
 // SetPkgID stamps only the PkgID portion of the ObjectID,
 // preserving any pre-existing NewTime. Used by allocator
 // constructors to stamp authority at allocation.
+// SetPkgID stamps or re-stamps the owner. A re-stamp (adoption) is a new
+// owner, and grants do not transfer: the adopter never wrote mutable(x).
 func (oi *ObjectInfo) SetPkgID(p PkgID) {
 	oi.ID.PkgID = p
+	oi.IsMutable = false
 }
 
 func (oi *ObjectInfo) GetModTime() uint64 {
@@ -397,6 +405,26 @@ func (oi *ObjectInfo) GetIsTransient() bool {
 	return false
 }
 
+// GetGrantObject is GetFirstObject with one difference: a pointer to a
+// heap-held value (the result of `&T{}` or an escaped variable) resolves to
+// the object inside the heap item, so `mutable(p)` and `mutable(&p.field)`
+// mark, and borrow rule #2 reads, the same object.
+func (tv *TypedValue) GetGrantObject(store Store) Object {
+	obj := tv.GetFirstObject(store)
+	for range 8 {
+		hiv, ok := obj.(*HeapItemValue)
+		if !ok {
+			return obj
+		}
+		inner := hiv.Value.GetFirstObject(store)
+		if inner == nil {
+			return obj
+		}
+		obj = inner
+	}
+	return obj
+}
+
 func (tv *TypedValue) GetFirstObject(store Store) Object {
 	switch cv := tv.V.(type) {
 	case PointerValue:
@@ -459,6 +487,15 @@ func (tv *TypedValue) GetFirstObject(store Store) Object {
 // This function controls heavily the behaviour of
 // [Machine.IsReadonly], and thus cross-realm write authority.
 func (tv *TypedValue) IsReadonlyBy(rid, ownPkgID PkgID) bool {
+	return tv.isReadonlyBy(rid, ownPkgID, nil)
+}
+
+// isReadonlyBy is IsReadonlyBy carrying seen, the heap items it has already
+// descended into. A pointer stored in the slot it names makes hiv.Value name
+// hiv again, which would otherwise recurse until the stack overflows. The
+// descent below is the only one in this function, so a heap item is the only
+// key it needs; every other arm reads an ObjectID and stops.
+func (tv *TypedValue) isReadonlyBy(rid, ownPkgID PkgID, seen map[*HeapItemValue]struct{}) bool {
 	var tvoid ObjectID
 	switch cv := tv.V.(type) {
 	case PointerValue:
@@ -471,8 +508,14 @@ func (tv *TypedValue) IsReadonlyBy(rid, ownPkgID PkgID) bool {
 			// external while the heap item itself is
 			// not.
 			// See test/files/zrealm_crossrealm25a.gno.
-			if hiv.Value.IsReadonlyBy(rid, ownPkgID) {
-				return true
+			if _, dup := seen[hiv]; !dup {
+				if seen == nil {
+					seen = make(map[*HeapItemValue]struct{})
+				}
+				seen[hiv] = struct{}{}
+				if hiv.Value.isReadonlyBy(rid, ownPkgID, seen) {
+					return true
+				}
 			}
 			// An unreal HIV is a transient heap-promotion wrapper
 			// for an escaping local (closure capture, new(T), &T{},

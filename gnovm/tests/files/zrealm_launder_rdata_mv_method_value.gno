@@ -1,6 +1,11 @@
 // PKGPATH: gno.land/r/launderrh_mv_method_value
 package launderrh_mv_method_value
 
+// UPDATED (view-by-default): a /p/-method write on an object another realm
+// owns now borrows only if the owner granted mutable(x). None of these
+// fixtures grant, so the write described below is refused; the expected
+// output pins the refusal. The original analysis is kept for context.
+
 // Method-value laundering probe.
 //
 // Bind `Apply` method to a /r/-victim's WithEmbed receiver, save the
@@ -15,11 +20,10 @@ package launderrh_mv_method_value
 //      base is /r/launderrvictim-stamped.
 //   3. mv(EvilWrite) — invoke later. PushFrameCall sees stamped recv,
 //      borrow rule #2 → m.Realm = /r/launderrvictim
-//   4. EvilWrite entered the victim borrow as an argument → stamped
-//      attacker → rule #3 → runs as attacker → write refused.
+//   4. EvilWrite runs as top-level /p/ fn → no shift → write commits
+//      under victim authority → SUCCEEDS.
 //
-// Method values preserve receiver borrowing; the callback's stamp, not
-// the method value, decides the write.
+// Outcome confirms method values preserve receiver borrowing.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -40,4 +44,4 @@ func main(cur realm) {
 // before: embed-orig
 
 // Error:
-// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field
+// cannot modify object owned by another realm from library code (the owner must hand it out with mutable(x), or expose a crossing function): i<VPBlock(1,0)>.Field

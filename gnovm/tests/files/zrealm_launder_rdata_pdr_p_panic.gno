@@ -1,6 +1,11 @@
 // PKGPATH: gno.land/r/launderrh_pdr_p_panic
 package launderrh_pdr_p_panic
 
+// UPDATED (view-by-default): a /p/-method write on an object another realm
+// owns now borrows only if the owner granted mutable(x). None of these
+// fixtures grant, so the write described below is refused; the expected
+// output pins the refusal. The original analysis is kept for context.
+
 // Vector 11: a /p/-helper called from attacker panics. Since no
 // realm boundary is crossed during unwind (the /p/-frame's LastRealm
 // = attacker), the panic is catchable by attacker's defer.
@@ -16,9 +21,9 @@ package launderrh_pdr_p_panic
 // /p/-method writes to victim-stamped pointer (recv-borrow → m.Realm
 // = victim), panic fires (cross-realm), abort. Already tested.
 //
-// Here we test the converse: /p/.PanicAfterApply calls EvilWrite,
-// which entered the borrow stamped attacker and runs as attacker, so
-// the readonly panic fires before PanicAfterApply's own.
+// Here we test the converse: /p/.PanicAfterApply calls EvilWrite
+// (succeeds), then panics. Does the post-write panic abort, or does
+// it propagate up to attacker recover normally?
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -46,10 +51,16 @@ func main(cur realm) {
 	println("after: ", launderrvictim.ReadPtr())
 }
 
-// The readonly panic originates inside EvilWrite under a /p/-method
-// receiver-borrowed to victim → unwinding crosses the realm boundary
-// back to attacker → unhandled panic, transaction aborts. Nothing was
-// written.
+// The panic post-apply originates inside a /p/-method that was
+// receiver-borrowed to victim → m.Realm at panic time = victim →
+// unwinding will cross the realm boundary back to attacker
+// → unhandled panic, transaction aborts.
+//
+// CRITICAL question: does the WRITE that succeeded inside EvilWrite
+// (before the panic) persist? Transaction abort should roll back
+// the realm transaction.
 
-// Error:
-// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field
+// Output:
+// before: ptr-orig
+// recovered: cannot modify object owned by another realm from library code (the owner must hand it out with mutable(x), or expose a crossing function): i<VPBlock(1,0)>.Field
+// after recover: ptr-orig

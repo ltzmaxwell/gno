@@ -314,15 +314,14 @@ func (m *Machine) setRealm(r *Realm) {
 }
 
 // assertBorrowedRealm panics (debug builds only) when a borrow rule is about
-// to set m.Realm to nil for a package that MUST carry a realm — /r/, /p/, or
-// stdlib (IsRealmPath || isImmutableLibraryPath). That would silently put the
-// machine in "single-user mode" (IsReadonly/isExternalRealm short-circuit on
-// nil m.Realm) and reopen the nil-realm cross-realm write hole. _test overlays
-// and uverse legitimately have no realm and are excluded (neither predicate
-// matches them).
+// to set m.Realm to nil for a package that MUST carry a realm — /r/, /e/, /p/, or
+// stdlib. That would silently put the machine in "single-user mode"
+// (IsReadonly/isExternalRealm short-circuit on nil m.Realm) and reopen the
+// nil-realm cross-realm write hole. _test overlays and uverse legitimately
+// have no realm and are excluded (none of the predicates match them).
 func assertBorrowedRealm(pkgPath string, r *Realm) {
 	if debugAssert && r == nil &&
-		(IsRealmPath(pkgPath) || isImmutableLibraryPath(pkgPath)) {
+		(IsRealmPath(pkgPath) || IsEphemeralPath(pkgPath) || isImmutableLibraryPath(pkgPath)) {
 		panic("borrow rule set m.Realm=nil for realm-bearing package: " + pkgPath)
 	}
 }
@@ -2565,6 +2564,13 @@ func (m *Machine) PushFrameBasic(s Stmt) {
 // ensure the counts are consistent, otherwise we mask
 // bugs with frame pops.
 func (m *Machine) PushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, isDefer bool) {
+	m.pushFrameCall(cx, fv, recv, PkgID{}, isDefer)
+}
+
+// pushFrameCall is PushFrameCall for a method value: bindPID is the realm
+// whose frame formed it (the BoundMethodValue's stamp), zero for a plain func
+// or a plain x.M(...) call.
+func (m *Machine) pushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, bindPID PkgID, isDefer bool) {
 	withCross := cx.IsWithCross()
 	numValues := 0
 	if isDefer {
@@ -2676,14 +2682,27 @@ func (m *Machine) PushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, is
 	// Not cross nor crossing. Three borrow rules apply (the first
 	// applicable one fires):
 	//
-	//   #1. /r/-declared function/method/closure → borrow to the
+	//   #1. /r/- or /e/-declared function/method/closure → borrow to the
 	//       callable's declaring realm (any receiver shape, or top-level
 	//       function). /r/attacker code runs with /r/attacker's
-	//       authority, not victim's.
+	//       authority, not victim's. Ephemeral MsgRun code must likewise
+	//       regain its own authority when called back by another realm.
 	//
-	//   #2. Otherwise (/p/-declared) → if the receiver is a real,
-	//       foreign-stamped object, borrow to the receiver's constructing
-	//       realm (which is the same as its storage realm).
+	//   #2. Otherwise (/p/-declared) → if the receiver is a foreign-stamped
+	//       object its owner granted with mutable(x) (ObjectInfo.IsMutable),
+	//       borrow to the receiver's constructing realm (which is the same
+	//       as its storage realm). Without the grant the reference is a
+	//       view, real or not, and the method's writes hit the readonly
+	//       gate; a constructor that means to hand out a handle (a token's
+	//       teller) grants the fresh object itself. A /p/-owned receiver
+	//       always borrows so the post-init immutability gate reports the
+	//       write.
+	//
+	//       A method value (x.M bound earlier, then called) first returns
+	//       to the realm whose frame bound it, so the grant test above runs
+	//       from the binder's side, not from a borrowed caller's. Bound by
+	//       the receiver's owner it returns to the realm whose code calls
+	//       it instead, so handing one out grants nothing by itself.
 	//
 	//   #3. Otherwise, if fv is a closure (FuncLit) declared in a /p/
 	//       package, borrow to the realm context that was active when
@@ -2698,7 +2717,7 @@ func (m *Machine) PushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, is
 	// also keeps the nil-realm write hole closed: a tx's entry realm is
 	// non-nil, so a stdlib method writing a foreign /r/ object is rejected
 	// by the readonly gate against the caller's realm.
-	if IsRealmPath(pv.PkgPath) {
+	if IsRealmPath(pv.PkgPath) || IsEphemeralPath(pv.PkgPath) {
 		if m.Realm == nil || pv.PkgPath != m.Realm.Path {
 			r := pv.GetRealm()
 			assertBorrowedRealm(pv.PkgPath, r)
@@ -2706,18 +2725,35 @@ func (m *Machine) PushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, is
 		}
 		return
 	}
+	var oi *ObjectInfo
 	if recv.IsDefined() {
-		obj := recv.GetFirstObject(m.Store)
-		if obj != nil {
-			recvOID := obj.GetObjectInfo().ID
-			if !recvOID.IsZero() && !recvOID.PkgID.IsStdlibPkg() &&
-				(m.Realm == nil || recvOID.PkgID != m.Realm.ID) {
-				recvPkgOID := ObjectIDFromPkgID(recvOID.PkgID)
-				objpv := m.Store.GetObject(recvPkgOID).(*PackageValue)
-				r := objpv.GetRealm()
-				assertBorrowedRealm(objpv.PkgPath, r)
-				m.setRealm(r)
-			}
+		if obj := recv.GetGrantObject(m.Store); obj != nil {
+			oi = obj.GetObjectInfo()
+		}
+	}
+	// Rule #2 prelude (see "A method value" above): start from the binder,
+	// or from the calling realm when the binder owns the receiver.
+	if bindPID.IsRealmPkg() {
+		var cr *Realm
+		if oi != nil && oi.ID.PkgID == bindPID {
+			cr = m.callingRealm()
+		}
+		if cr != nil {
+			m.setRealm(cr)
+		} else if m.Realm == nil || bindPID != m.Realm.ID {
+			m.borrowToPkg(bindPID)
+		}
+	}
+	if oi != nil {
+		recvOID := oi.ID
+		if !recvOID.IsZero() && !recvOID.PkgID.IsStdlibPkg() &&
+			(m.Realm == nil || recvOID.PkgID != m.Realm.ID) &&
+			(oi.IsMutable || recvOID.PkgID.IsImmutablePkg()) {
+			recvPkgOID := ObjectIDFromPkgID(recvOID.PkgID)
+			objpv := m.Store.GetObject(recvPkgOID).(*PackageValue)
+			r := objpv.GetRealm()
+			assertBorrowedRealm(objpv.PkgPath, r)
+			m.setRealm(r)
 		}
 	}
 	// borrow rule #3: closure capture-realm borrow.
@@ -2734,7 +2770,7 @@ func (m *Machine) PushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, is
 	// re-stamped with the realm it came from (stampFuncValue), and a
 	// realm PkgID on a non-closure is that stamp, so it borrows like a
 	// closure that realm had written. /r/-declared FuncDecls never reach
-	// here (rule #1).
+	// here (rule #1; /e/ too).
 	//
 	// Stdlib-stamped closures are skipped, mirroring borrow rule #2's
 	// stdlib-receiver skip: stdlib owns no mutable state and runs with the
@@ -2745,16 +2781,38 @@ func (m *Machine) PushFrameCall(cx *CallExpr, fv *FuncValue, recv TypedValue, is
 	// setRealm when we're already in the closure's home.
 	if pid := fv.GetObjectInfo().ID.PkgID; fv.IsClosure || pid.IsRealmPkg() {
 		if !pid.IsZero() && !pid.IsStdlibPkg() && (m.Realm == nil || pid != m.Realm.ID) {
-			pkgOID := ObjectIDFromPkgID(pid)
-			if pobj := m.Store.GetObject(pkgOID); pobj != nil {
-				if objpv, ok := pobj.(*PackageValue); ok {
-					r := objpv.GetRealm()
-					assertBorrowedRealm(objpv.PkgPath, r)
-					m.setRealm(r)
-				}
-			}
+			m.borrowToPkg(pid)
 		}
 	}
+}
+
+// borrowToPkg switches m.Realm to pid's package realm; no-op if the package
+// value is not in the store.
+func (m *Machine) borrowToPkg(pid PkgID) {
+	if objpv, ok := m.Store.GetObject(ObjectIDFromPkgID(pid)).(*PackageValue); ok {
+		r := objpv.GetRealm()
+		assertBorrowedRealm(objpv.PkgPath, r)
+		m.setRealm(r)
+	}
+}
+
+// callingRealm returns the realm whose own code makes the call on top of the
+// stack: the body realm of the nearest /r/- or /e/-declared frame below it.
+// /p/ and stdlib frames act for their caller and are skipped, closures too:
+// one built inside a borrowed call carries the borrowed realm's stamp.
+func (m *Machine) callingRealm() *Realm {
+	rlm := m.Frames[len(m.Frames)-1].LastRealm
+	for i := len(m.Frames) - 2; i >= 0; i-- {
+		fr := &m.Frames[i]
+		if fr.Func == nil {
+			continue
+		}
+		if IsRealmPath(fr.Func.PkgPath) || IsEphemeralPath(fr.Func.PkgPath) {
+			return rlm
+		}
+		rlm = fr.LastRealm
+	}
+	return rlm
 }
 
 func (m *Machine) PopFrame() Frame {
@@ -3127,7 +3185,7 @@ func panicIllegalPointerLHS(lx Expr) {
 func (m *Machine) PopAsPointer(lx Expr) PointerValue {
 	pv, ro := m.PopAsPointer2(lx)
 	if ro {
-		m.Panic(typedString(readonlyAccessPanic(lx)))
+		m.Panic(typedString(m.readonlyAccessPanic(lx)))
 	}
 	return pv
 }
@@ -3138,7 +3196,13 @@ func (m *Machine) PopAsPointer(lx Expr) PointerValue {
 // through a method or crossing function re-enters via PushFrameCall, whose
 // implicit borrow-realm switch (or hard cross-call) lines m.Realm up with
 // the target's owner.
-func readonlyAccessPanic(x Expr) string {
+func (m *Machine) readonlyAccessPanic(x Expr) string {
+	if m.Package != nil && m.Package.PkgID.IsImmutablePkg() && !m.Package.PkgID.IsStdlibPkg() {
+		// /p/ code writing an object another realm owns: no borrow happened
+		// because the owner never granted mutable(x). Stdlib receivers never
+		// borrow, so the hint would be wrong there.
+		return "cannot modify object owned by another realm from library code (the owner must hand it out with mutable(x), or expose a crossing function): " + x.String()
+	}
 	return "cannot directly modify readonly tainted object (use a method or crossing function): " + x.String()
 }
 
@@ -3258,7 +3322,7 @@ func (m *Machine) resolvePointer(lx Expr, lhsOperands []TypedValue) (pv PointerV
 			ro = m.IsReadonly(xv)
 			if ro {
 				// Ensure we always panic, without expecting the caller to do it.
-				m.Panic(typedString(readonlyAccessPanic(lx)))
+				m.Panic(typedString(m.readonlyAccessPanic(lx)))
 			}
 			pv = xv.GetPointerAtIndex(m, m.Realm, m.Alloc, m.Store, iv)
 		} else {
@@ -3367,10 +3431,9 @@ func (m *Machine) Panic(etv TypedValue) {
 	panic(ex)
 }
 
-// This function does not go-panic:
-// caller must return manually.
-// It should ONLY be called from doOp* Op handlers,
-// and should return immediately from the origin Op.
+// pushPanic schedules VM panic unwinding instead of panicking in Go.
+// If no call frame exists, it terminates via the unhandled-panic path.
+// Callers must be doOp* handlers and return immediately after calling it.
 func (m *Machine) pushPanic(etv TypedValue) {
 	// Construct a new exception.
 	ex := &Exception{
@@ -3379,6 +3442,11 @@ func (m *Machine) pushPanic(etv TypedValue) {
 	}
 	// Pop after capturing stacktrace.
 	fr := m.PopUntilLastCallFrame()
+	if fr == nil {
+		// No call frame during package var init: nothing to unwind.
+		m.Exception = ex.WithPrevious(m.Exception)
+		panic(m.makeUnhandledPanicError())
+	}
 	// Link ex.Previous.
 	if m.Exception == nil {
 		// Recall the last m.Exception before frame.

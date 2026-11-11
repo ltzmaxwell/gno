@@ -1,6 +1,11 @@
 // PKGPATH: gno.land/r/launderrh_pdr_p_defer_apply
 package launderrh_pdr_p_defer_apply
 
+// UPDATED (view-by-default): a /p/-method write on an object another realm
+// owns now borrows only if the owner granted mutable(x). None of these
+// fixtures grant, so the write described below is refused; the expected
+// output pins the refusal. The original analysis is kept for context.
+
 // Vector 7: /p/-method DeferApply schedules attacker callback as
 // a defer rather than synchronous call.
 //
@@ -12,14 +17,17 @@ package launderrh_pdr_p_defer_apply
 //   4. DeferApply body: schedule fn(i) as defer
 //   5. DeferApply returns → defer fires → PushFrameCall(fn, true)
 //      with LastRealm = victim (current m.Realm)
-//   6. fn is EvilWrite, stamped attacker when DeferApply took it →
-//      rule #3 → m.Realm = attacker
-//   7. EvilWrite body: i.Field = ... → readonly check fails → panic
+//   6. EvilWrite is top-level /p/ fn → no borrow rule #1 (not /r/), no
+//      borrow rule #2 (no receiver) → m.Realm stays victim
+//   7. EvilWrite body: i.Field = ... writes /r/-victim data with
+//      m.Realm = victim → readonly check sees crlm == storage → no
+//      panic → WRITE SUCCEEDS
 //
-// Same shape as the synchronous Apply case; the stamp is on the value,
-// so defer adds no path around it.
+// This is the SAME known-open Apply pattern, just with defer. The
+// defer path doesn't add any protection.
 //
-// Expected: refused; the embedded /p/.Immutable is unchanged.
+// Expected (matching the known-open pattern documented in
+// other launder tests): the embedded /p/.Immutable is mutated.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -39,4 +47,4 @@ func main(cur realm) {
 // before: ptr-orig
 
 // Error:
-// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field
+// cannot modify object owned by another realm from library code (the owner must hand it out with mutable(x), or expose a crossing function): i<VPBlock(1,0)>.Field

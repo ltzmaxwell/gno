@@ -1,6 +1,11 @@
 // PKGPATH: gno.land/r/launderrh_mv_stored_iface
 package launderrh_mv_stored_iface
 
+// UPDATED (view-by-default): a /p/-method write on an object another realm
+// owns now borrows only if the owner granted mutable(x). None of these
+// fixtures grant, so the write described below is refused; the expected
+// output pins the refusal. The original analysis is kept for context.
+
 // Method-value stored through `any` boxing.
 //
 // 1. Bind we.Apply, box into `any`, store in attacker-local map.
@@ -10,8 +15,8 @@ package launderrh_mv_stored_iface
 //
 // Trace expectation: bound method value carries a closure-like
 // structure that retains the recv. After unbox + invoke, borrow rule #2
-// fires, but EvilWrite entered that borrow stamped attacker and runs
-// as attacker (rule #3), so the write is refused whatever boxing did.
+// should fire and write succeeds. Method values laundered through
+// interface boxing remain dangerous.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -36,4 +41,4 @@ func main(cur realm) {
 // before: embed-orig
 
 // Error:
-// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field
+// cannot modify object owned by another realm from library code (the owner must hand it out with mutable(x), or expose a crossing function): i<VPBlock(1,0)>.Field

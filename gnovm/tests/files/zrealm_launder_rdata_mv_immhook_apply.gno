@@ -1,6 +1,11 @@
 // PKGPATH: gno.land/r/launderrh_mv_immhook_apply
 package launderrh_mv_immhook_apply
 
+// UPDATED (view-by-default): a /p/-method write on an object another realm
+// owns now borrows only if the owner granted mutable(x). None of these
+// fixtures grant, so the write described below is refused; the expected
+// output pins the refusal. The original analysis is kept for context.
+
 // Stored ImmHook (func(*launderrvictim.Immutable)) that uses its arg
 // — given by victim — to dispatch /p/-Apply on an EMBEDDED /p/-pointer
 // reached from the victim's /r/-Immutable.
@@ -14,11 +19,12 @@ package launderrh_mv_immhook_apply
 // nothing extra over RegisterPlainHook. But: the hook can CAPTURE the
 // /p/-aliased pointer separately. The closure body is /r/-attacker
 // → borrow rule #1 → m.Realm = /r/-attacker. From there, captured.Apply
-// dispatches via borrow rule #2 to /r/-victim, and EvilWrite enters that
-// borrow stamped /r/-attacker, so it runs as attacker.
+// dispatches via borrow rule #2 to /r/-victim, then EvilWrite as
+// top-level /p/.
 //
-// Outcome: refused, identical to the PlainHook variant. The ImmHook
-// signature adds nothing either way; the callback's stamp decides.
+// Outcome: SUCCEEDS — write commits via Apply, identical primitive
+// to the PlainHook variant. The ImmHook signature does NOT provide
+// extra safety; the captured pointer carries the exploit.
 
 import (
 	"gno.land/p/demo/tests/launderattack/v0"
@@ -47,4 +53,4 @@ func main(cur realm) {
 // before: embed-orig
 
 // Error:
-// cannot directly modify readonly tainted object (use a method or crossing function): i<VPBlock(1,0)>.Field
+// cannot modify object owned by another realm from library code (the owner must hand it out with mutable(x), or expose a crossing function): i<VPBlock(1,0)>.Field

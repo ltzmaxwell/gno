@@ -74,7 +74,8 @@ next cross-call.
 | `fn(cross(cur), ...)` into different realm | shifts | shifts | yes | yes |
 | `fn(cur, ...)` (non-crossing-call of crossing-function), same realm | unchanged | unchanged | no | no |
 | Non-crossing call of `/r/X`-declared callable from `/r/Y` | unchanged | shifts to `/r/X` (borrow rule #1) | yes | yes |
-| Stdlib/`/p/` method on real foreign-stamped receiver | unchanged | shifts to receiver's stamp (borrow rule #2) | yes | yes |
+| `/p/` method on foreign-stamped receiver granted with `mutable(x)` | unchanged | shifts to receiver's stamp (borrow rule #2) | yes | yes |
+| `/p/` method on foreign-stamped receiver without a grant (a view) | unchanged | unchanged; writes refused | no | no |
 | Stdlib/`/p/` method on primitive/nil/unstamped receiver | unchanged | unchanged | no | no |
 | Stdlib/`/p/` top-level function | unchanged | unchanged | no | no |
 
@@ -151,6 +152,15 @@ Two practical consequences:
    for the allocation). See `gnovm/pkg/gnolang/alloc.go`
    `checkConstructionTime`.
 
+   Conversions to a foreign `/r/`-declared type are refused too, with
+   `illegal conversion to external realm type`, directly or through
+   one pointer level, unless its underlying type is a primitive, func,
+   or chan type; a nil pointer is let through. See §8.2.
+
+   Holding such a value is still not authority: `var u v.UserT` in
+   another realm is allowed (stamped with `v`'s PkgID), and `&u` can be
+   passed back to `v`. Never treat a non-nil `*UserT` as authorization.
+
 3. **Copies are type-driven, not source-propagated.**
    `{Array,Struct}Value.Copy` stamps the copy from the *declared type*
    (`getDeclaredPkgID`), mirroring the allocation rule: a `/r/`-declared
@@ -214,12 +224,16 @@ attacker's body fail the readonly check.
 ### 4.2 Borrow rule #2 — Storage-realm borrow (stdlib / `/p/` methods)
 
 ```go
+// a method value first returns to the realm that bound it (bindPID), or,
+// bound by the receiver's owner, to the realm whose code makes the call
 if recv.IsDefined() {
-    obj := recv.GetFirstObject(m.Store)
+    obj := recv.GetGrantObject(m.Store)
     if obj != nil {
-        recvOID := obj.GetObjectInfo().ID
-        if !recvOID.IsZero() &&
-            (m.Realm == nil || recvOID.PkgID != m.Realm.ID) {
+        oi := obj.GetObjectInfo()
+        recvOID := oi.ID
+        if !recvOID.IsZero() && !recvOID.PkgID.IsStdlibPkg() &&
+            (m.Realm == nil || recvOID.PkgID != m.Realm.ID) &&
+            (oi.IsMutable || recvOID.PkgID.IsImmutablePkg()) {
             recvPkgOID := ObjectIDFromPkgID(recvOID.PkgID)
             objpv := m.Store.GetObject(recvPkgOID).(*PackageValue)
             m.setRealm(objpv.GetRealm())
@@ -228,10 +242,11 @@ if recv.IsDefined() {
 }
 ```
 
-A non-`/r/`-declared method (stdlib or `/p/`) called on a defined
-receiver whose `PkgID` differs from `m.Realm.ID` shifts `m.Realm` to
-the receiver's allocating realm for the call duration. This lets
-generic library helpers operate on caller-owned state:
+A `/p/`-declared method called on a defined receiver whose `PkgID`
+differs from `m.Realm.ID` shifts `m.Realm` to the receiver's allocating
+realm for the call duration, **if the owner granted the receiver with
+`mutable(x)`** (see "Views and handles" in gno-interrealm.md). This lets
+generic library helpers operate on state the owner handed out:
 
 - `bptree.Set(...)` mutates the bptree even though `bptree` lives
   in `/p/`.
@@ -241,6 +256,10 @@ generic library helpers operate on caller-owned state:
 
 **Borrow rule #2 does NOT fire when:**
 
+- The receiver is foreign-owned and not granted: the reference is a
+  view, `m.Realm` stays the caller's, and the method's writes are refused.
+- The receiver is stdlib-stamped: stdlib methods run with the caller's
+  authority.
 - The receiver has no object identity (`GetFirstObject` returns nil):
   primitive-underlying defined types (`type Mutator int`),
   nil-pointer receivers, nil-valued slice/map/func defined types.
@@ -584,17 +603,21 @@ recoverability difference.
 ### 8.2 Case 2 — Refuse conversion to foreign `/r/`-declared type
 
 ```go
-if tdt, ok := t.(*DeclaredType); ok && !tdt.IsImmutable() && m.Realm != nil {
-    if IsRealmPath(tdt.PkgPath) && tdt.PkgPath != m.Realm.Path {
+if tdt, ok := unwrapPointerType(t).(*DeclaredType); ok && !tdt.IsImmutable() && m.Realm != nil {
+    isNilPtr := t.Kind() == PointerKind && xv.V == nil
+    if IsRealmPath(tdt.PkgPath) && tdt.PkgPath != m.Realm.Path && !isNilPtr {
         panic("illegal conversion to external realm type")
     }
 }
 ```
 
 A realm cannot forge values of `/r/`-declared types it doesn't
-declare. Combined with the construction-time check (§3.2), this
-ensures every real instance of a `/r/`-declared type traces back to
-its home realm's allocator.
+declare. The target is looked through one pointer level, so pointer
+conversions are refused too; a nil pointer points at nothing and is
+let through. Combined with the construction-time check (§3.2),
+this prevents another realm from populating a forged instance through
+construction or conversion. It may still hold a zero value it
+declared itself (§3.2).
 
 ## 9. Panic and Cross-Realm Boundary
 
@@ -634,11 +657,12 @@ binding time**.
 
 Two practical implications:
 
-1. **Storing a bound method value isn't a safety boundary.** A
-   `/p/`-method bound to a victim-stamped receiver, stored anywhere,
-   still borrow rule #2 borrows to victim when invoked. Verified in
-   `zrealm_launder_rdata_mv_stored_bound_mv.gno` and
-   `_attacker_stored_mv.gno`.
+1. **A bound `/p/` method writes only a granted receiver for a foreign
+   caller.** It first returns to the realm that bound it, or, bound by
+   the receiver's owner, to the realm whose code makes the call; then
+   borrow rule #2 applies as for a direct call. Verified in
+   `zrealm_view_callback.gno` and
+   `zrealm_launder_rdata_mv_stored_bound_mv.gno`.
 
 2. **Method expressions are different.** `me := (*T).M` is an
    *unbound* method value with the receiver as an explicit first
@@ -647,9 +671,9 @@ Two practical implications:
    receiver the same way. Verified in
    `zrealm_launder_rdata_mv_method_expr.gno`.
 
-Realm authors should treat bound method values of `/p/`-types over
-their internal state as **publishing the underlying method to any
-holder** — equivalent to returning a setter closure.
+A bound method value of a `/p/`-type over a realm's internal state
+publishes nothing by itself; `mutable(x).M` publishes the method to any
+holder, like returning a setter closure.
 
 ## 11. Guidelines
 
