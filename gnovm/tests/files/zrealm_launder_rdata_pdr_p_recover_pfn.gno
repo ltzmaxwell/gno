@@ -1,6 +1,10 @@
 // PKGPATH: gno.land/r/launderrh_pdr_p_recover_pfn
 package launderrh_pdr_p_recover_pfn
 
+// Explicit-entry rule: a /p/ method called from here has no power over
+// another realm's object, so the write below is refused. The analysis below
+// was written before the explicit-entry rule.
+
 // Vector 8b: /p/-method RecoverApply called with a top-level /p/
 // callback (EvilWrite) — the known-open Apply attack, now inside
 // a /p/-RecoverApply scope.
@@ -42,5 +46,5 @@ func main(cur realm) {
 
 // Output:
 // before: ptr-orig
-// rec: nil (no panic, write succeeded)
-// after:  pwnd-via-apply
+// rec: non-nil
+// after:  ptr-orig

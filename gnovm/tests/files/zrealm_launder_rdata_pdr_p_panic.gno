@@ -1,6 +1,10 @@
 // PKGPATH: gno.land/r/launderrh_pdr_p_panic
 package launderrh_pdr_p_panic
 
+// Explicit-entry rule: a /p/ method called from here has no power over
+// another realm's object, so the write below is refused. The analysis below
+// was written before the explicit-entry rule.
+
 // Vector 11: a /p/-helper called from attacker panics. Since no
 // realm boundary is crossed during unwind (the /p/-frame's LastRealm
 // = attacker), the panic is catchable by attacker's defer.
@@ -55,5 +59,7 @@ func main(cur realm) {
 // (before the panic) persist? Transaction abort should roll back
 // the realm transaction.
 
-// Error:
-// post-apply panic
+// Output:
+// before: ptr-orig
+// recovered: cannot modify object owned by another realm from library code (call a function of the owning realm): i<VPBlock(1,0)>.Field
+// after recover: ptr-orig

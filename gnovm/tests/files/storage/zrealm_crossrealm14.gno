@@ -6,16 +6,14 @@ import (
 )
 
 func main() {
-	// even though we are running within a realm,
-	// we aren't storing the result of crossrealm.Make1(),
-	// so this should print fine.
+	// Make1 builds the container in the crossrealm realm and returns it.
+	// It is that realm's object even though nothing stores it, so the /p/
+	// method Touch called from here cannot write it (explicit-entry rule).
 	crossrealm.Make1().Touch().Print()
 }
 
 // Storage:
-// gno.land/r/crossrealm: 0
 // gno.land/r/tests/vm/crossrealm: 0
 
-// Output:
-// A: 2
-// B: LocalStruct{123}
+// Error:
+// cannot modify object owned by another realm from library code (call a function of the owning realm): c<VPBlock(1,0)>.A

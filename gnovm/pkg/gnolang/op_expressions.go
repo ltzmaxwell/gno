@@ -818,11 +818,10 @@ func (m *Machine) doOpConvert() {
 	// declare a parallel /p/-type with the same struct layout as a
 	// /p/-typed victim field plus extra mutator methods, then convert
 	// the victim's pointer to the parallel type and invoke the new
-	// mutator — borrow rule 2 routes m.Realm to victim's realm for
-	// the duration of the /p/-method, so the write would succeed under
-	// victim authority. Blocking the conversion here (m.IsReadonly is
-	// the cross-realm ownership check) stops the launder before any
-	// method dispatch. See zrealm_launder_g_typepun.gno.
+	// mutator. Borrow rule 2 no longer switches to the victim's realm
+	// for a realm-owned receiver, so the write check would refuse it;
+	// refusing the conversion (m.IsReadonly) stops it earlier, before
+	// any method dispatch. See zrealm_launder_g_typepun.gno.
 	if xv.T != nil && !xv.T.IsImmutable() && m.IsReadonly(&xv) {
 		if xvdt, ok := xv.T.(*DeclaredType); ok &&
 			xvdt.PkgPath == m.Realm.Path {

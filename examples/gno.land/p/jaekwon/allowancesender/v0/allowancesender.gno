@@ -15,11 +15,18 @@
 //	al  := allowancesender.New(src, granterAddr,
 //	           chain.NewCoins(chain.NewCoin("ugnot", 1_000_000)))
 //	defer al.Close()
-//	bRealm.DoSomething(cross, al)  // B can call al.Send up to cap
+//	bRealm.DoSomething(cross, func(to address, amt chain.Coins) {
+//		al.Send(to, amt)
+//	})
+//
+// The granter keeps the sender and hands the callee a function literal
+// written in the granter's own source. A callee that stores the object
+// itself can read it (Cap, Spent, Remaining, Closed) but cannot spend
+// through it.
 //
 // On return (success or panic), `defer al.Close()` flips the closed
-// flag. If B persisted al, B's stored reference is now dead — any
-// later al.Send() panics with "closed".
+// flag. If B persisted the granted function, B's stored reference is now
+// dead — any later call panics with "closed".
 //
 // # Naming note
 //
@@ -175,6 +182,9 @@ func New(inner banker.Banker, payer address, limit chain.Coins) *AllowanceSender
 	if !payer.IsValid() {
 		panic("allowancesender: payer address is invalid")
 	}
+	// The granter keeps the sender and hands the callee a function literal
+	// written in its own source that calls Send. A callee holding the object
+	// can read it but cannot spend through it.
 	return &AllowanceSender{
 		inner: inner,
 		payer: payer,

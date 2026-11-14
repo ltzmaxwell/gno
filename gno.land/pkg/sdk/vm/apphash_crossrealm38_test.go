@@ -228,7 +228,11 @@ import (
 // gas-row change moves nothing here: gas is not committed state. Re-derived
 // after merging develop, whose own changes moved the root too, so neither
 // side's value survives.
-const expectedCrossrealm38Hash = "acd1f9ce7a9313b44b4711e4a854645d3a4a347ad2f6af3920b565dbd08414bd"
+//
+// Bumped by runtime.FuncPkgPath: native.gno gains one declaration and one doc
+// comment, and stdlib .gno bytes are genesis state. crossrealm38 calls it
+// nowhere, so this is the stdlib source change alone; the gas row moves nothing.
+const expectedCrossrealm38Hash = "517f5400bc3c97ea0934cbe412dead8dfa64ee7f707ad0371b6430994ae9e4df"
 
 func TestAppHashCrossrealm38(t *testing.T) {
 	env := setupTestEnv()

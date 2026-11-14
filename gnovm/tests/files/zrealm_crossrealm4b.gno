@@ -21,7 +21,8 @@ import (
 //
 // At method-call time, IsReadonlyBy's HIV branch (ownership.go:466)
 // recurses into the wrapped StructValue's authority, which matches
-// m.Realm under borrow rule #2. Write succeeds.
+// m.Realm because Modify is declared in /r/tests/vm (borrow rule #1).
+// The write commits.
 var somevalue *tests.TestRealmObject
 
 func init() {

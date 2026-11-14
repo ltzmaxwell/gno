@@ -17,14 +17,15 @@ package launderrh_pdr_multilevel
 //  6. fn is top-level /p/ EvilWrite — no borrow rule #1, no borrow rule #2 → m.Realm
 //     stays victim
 //  7. EvilWrite body: i.Field = ... writes /r/-victim data under
-//     m.Realm = victim → readonly passes → WRITE SUCCEEDS
+//     m.Realm = victim → readonly passes → the write commits
 //
 // Now CallPDeferApply returns (defer queue is empty). The /p/-frame
 // is popped, restoring m.Realm to victim (unchanged). The /r/-victim
 // frame is popped, restoring m.Realm to attacker.
 //
-// Expected: SUCCEEDS — same as the known-open Apply pattern,
-// reached through a multi-level defer chain. The defer in /p/ is
+// Expected: the write commits. This is a known open hole (a handed-in /p/
+// function runs with the owner's power); the synchronous Apply fixtures are
+// refused. The defer in /p/ is
 // invoked from /r/-victim-borrowed scope, so m.Realm at callback
 // entry is /r/-victim.
 

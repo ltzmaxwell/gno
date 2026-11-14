@@ -39,7 +39,7 @@ func init(cur realm) {
 	if err != nil {
 		panic("failed to create CoinsBanker: " + err.Error())
 	}
-	grc20Banker, err := t.NewGRC20BankerWithOwner(cur.Address(), grc20Lister)
+	grc20Banker, err := t.NewGRC20BankerWithOwner(cur.Address(), grc20Lister, grc20reg.Transfer)
 	if err != nil {
 		panic("failed to create GRC20Banker: " + err.Error())
 	}

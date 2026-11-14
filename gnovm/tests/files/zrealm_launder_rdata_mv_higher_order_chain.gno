@@ -1,6 +1,10 @@
 // PKGPATH: gno.land/r/launderrh_mv_higher_order_chain
 package launderrh_mv_higher_order_chain
 
+// Explicit-entry rule: a /p/ method called from here has no power over
+// another realm's object, so the write below is refused. The analysis below
+// was written before the explicit-entry rule.
+
 // Higher-order indirection chain: victim calls fn that calls fn that
 // calls attacker's STORED PlainHook, which dispatches /p/-Apply
 // against a captured /r/-victim-stamped /p/-pointer.
@@ -57,4 +61,6 @@ func main(cur realm) {
 
 // Output:
 // before: embed-orig
-// after:  pwnd-via-apply
+
+// Error:
+// cannot modify object owned by another realm from library code (call a function of the owning realm): i<VPBlock(1,0)>.Field

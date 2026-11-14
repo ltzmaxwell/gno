@@ -52,15 +52,11 @@ func ApplyHook(h func(*Immutable)) {
 // --- /p/-type embedded / fielded inside /r/-declared types ---
 //
 // The three shapes below mix /r/-declared containers with /p/-typed
-// inner state. Even though the container types are /r/-declared,
-// the inner /p/-typed values inherit /p/'s methods — including
-// Apply-style higher-order methods that take /p/-typed callbacks.
-// /p/-attacker code can supply such callbacks. The attacker reaches
-// the inner /p/-value (read access works), then invokes Apply with
-// a /p/-declared function pointer. Inside Apply (borrow rule #2ed
-// to /r/launderrvictim), the callback runs without any borrow rule #1 or #2
-// shift (top-level /p/ fn), so the write commits under victim
-// authority.
+// inner state. The container types are /r/-declared, but the inner
+// /p/-typed values bring /p/'s methods, including Apply-style higher-order
+// methods that take /p/-typed callbacks. The attacker can read the inner
+// value and reach Apply, but a write attempted through that callback is
+// refused.
 
 // WithEmbed embeds launderpkg.Immutable by VALUE (method promotion
 // gives WithEmbed an .Apply method).

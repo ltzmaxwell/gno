@@ -5,7 +5,7 @@ package laundera
 //
 // Post-#5747: the value-copy deep-duplicates the struct into a fresh,
 // independent heap value owned by the executing realm (laundera). The
-// local write succeeds and has no victim impact (pass-by-value
+// local write commits and has no victim impact (pass-by-value
 // semantics). The cross-realm-write defense is enforced at the
 // pointer-deref boundary, not at the Copy boundary — see
 // zrealm_launder_rdata_conv_val_then_addr for the *p = newval case

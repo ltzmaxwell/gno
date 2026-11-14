@@ -26,11 +26,29 @@ func newTestNFT(name, symbol string, rlm realm) (tok *grc721.Token, led *grc721.
 	return
 }
 
+func testTokenFuncs(ledger *grc20.PrivateLedger) (
+	func(cur realm, to address, amount int64),
+	func(cur realm, spender address, amount int64),
+	func(cur realm, from, to address, amount int64),
+) {
+	transfer := func(cur realm, to address, amount int64) {
+		_ = ledger.CallerTeller().Transfer(0, cur, to, amount)
+	}
+	approve := func(cur realm, spender address, amount int64) {
+		_ = ledger.CallerTeller().Approve(0, cur, spender, amount)
+	}
+	transferFrom := func(cur realm, from, to address, amount int64) {
+		_ = ledger.CallerTeller().TransferFrom(0, cur, from, to, amount)
+	}
+	return transfer, approve, transferFrom
+}
+
 func TestTokenRegistration(cur realm, t *testing.T) {
 	resetState(t)
 
-	token, _ := grc20.NewToken("Test Token", "TEST", 6, nextGRC20ID.Next(), cur)
-	key := RegisterToken(cross(cur), token, "test_token")
+	token, ledger := grc20.NewToken("Test Token", "TEST", 6, nextGRC20ID.Next(), cur)
+	transfer, approve, transferFrom := testTokenFuncs(ledger)
+	key := RegisterToken(cross(cur), token, "test_token", transfer, approve, transferFrom)
 
 	uassert.True(t, strings.HasPrefix(token.ID(), key+"."), "registry key should be the token's rlmPath.symbol prefix")
 
@@ -80,7 +98,8 @@ func TestBalanceRetrieval(cur realm, t *testing.T) {
 	resetState(t)
 
 	token, ledger := grc20.NewToken("Balance Token", "BAL", 6, nextGRC20ID.Next(), cur)
-	key := RegisterToken(cross(cur), token, "balance_token")
+	transfer, approve, transferFrom := testTokenFuncs(ledger)
+	key := RegisterToken(cross(cur), token, "balance_token", transfer, approve, transferFrom)
 	holder := unsafe.CurrentRealm().Address()
 	ledger.Mint(holder, 1000)
 
@@ -132,8 +151,9 @@ func TestErrorCases(cur realm, t *testing.T) {
 func TestTokenListingFunctions(cur realm, t *testing.T) {
 	resetState(t)
 
-	grc20Token, _ := grc20.NewToken("Listing Token", "LST", 6, nextGRC20ID.Next(), cur)
-	grc20Key := RegisterToken(cross(cur), grc20Token, "listing_token")
+	grc20Token, grc20Ledger := grc20.NewToken("Listing Token", "LST", 6, nextGRC20ID.Next(), cur)
+	transfer, approve, transferFrom := testTokenFuncs(grc20Ledger)
+	grc20Key := RegisterToken(cross(cur), grc20Token, "listing_token", transfer, approve, transferFrom)
 
 	grc20List := GetAllTokens()
 	uassert.True(t, strings.Contains(grc20List, "Token:"+grc20Key),
@@ -168,8 +188,9 @@ func TestTokenListingFunctions(cur realm, t *testing.T) {
 func TestMustGetFunctions(cur realm, t *testing.T) {
 	resetState(t)
 
-	token, _ := grc20.NewToken("Must Token", "MUST", 6, nextGRC20ID.Next(), cur)
-	key := RegisterToken(cross(cur), token, "must_token")
+	token, ledger := grc20.NewToken("Must Token", "MUST", 6, nextGRC20ID.Next(), cur)
+	transfer, approve, transferFrom := testTokenFuncs(ledger)
+	key := RegisterToken(cross(cur), token, "must_token", transfer, approve, transferFrom)
 
 	retrievedToken := MustGetToken(key)
 	uassert.Equal(t, "Must Token", retrievedToken.GetName(), "Token name should match")

@@ -11,6 +11,9 @@ gnokey maketx call -pkgpath gno.land/r/testing/resource -func Edit -args edited 
 
 gnokey maketx call -pkgpath gno.land/r/testing/admin -func ExecuteAction -args 0 -gas-fee 760001ugnot -gas-wanted 7_600_000 -chainid tendermint_test alice
 
+! gnokey maketx call -pkgpath gno.land/r/testing/admin -func ExecuteAction -args 0 -gas-fee 760001ugnot -gas-wanted 7_600_000 -chainid tendermint_test alice
+stderr 'already executed'
+
 gnokey maketx call -pkgpath gno.land/r/testing/resource -func Value -gas-fee 190001ugnot -gas-wanted 1_900_000 -chainid tendermint_test alice
 stdout 'edited'
 
@@ -32,6 +35,7 @@ import (
 type prop struct {
 	title  string
 	action authz.PrivilegedAction
+	done   bool
 }
 
 var props []*prop
@@ -48,6 +52,11 @@ func ExecuteAction(cur realm, index int) {
 	if unsafe.PreviousRealm().Address() != "g1rfznvu6qfa0sc76cplk5wpqexvefqccjunady0" {
 		panic(errors.New("not alice"))
 	}
+	// authz hands the action over unguarded: this realm runs it at most once.
+	if props[index].done {
+		panic(errors.New("already executed"))
+	}
+	props[index].done = true
 	if err := props[index].action(); err != nil {
 		panic(err)
 	}
