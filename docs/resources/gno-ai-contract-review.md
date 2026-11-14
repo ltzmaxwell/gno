@@ -89,31 +89,35 @@ Keep such fields unexported **and** do not return aliased pointers to them.
 
 ### 8. `/p/`-type with mutation methods returned as pointer
 
-This is the subtlest case. A `/p/` library type whose fields are all **unexported** can
-still be a write-authority leak if it has exported mutation methods and you return a pointer
-to an instance stored in your realm.
+This is the subtlest case. A `/p/` library type whose fields are all **unexported**
+can still have exported mutation methods. A pointer you return to an instance
+stored in your realm is a view: a `/p/` method runs with the caller's authority,
+so the caller's write to your stored object is refused with
+`cannot modify object owned by another realm from library code (call a function of the owning realm)`.
 
 ```go
 // avl.Tree fields are all unexported — looks safe.
 // But Tree has exported mutation methods: Set, Remove, etc.
 var store = avl.NewTree()
 
-// WRONG: attacker calls store.Set(key, value) on the returned pointer.
-// Borrow rule #2 fires (tree was allocated in this realm) → m.Realm = /r/V
-// for the method body → the write inside Set commits under your authority.
+// The caller's store.Set(...) on the returned pointer is refused.
 func GetStore() *avl.Tree { return store }
 
 // RIGHT: never return the tree pointer. Expose only what you control.
 func GetValue(key string) (any, bool) { return store.Get(key) }
 ```
 
-The rule: **any exported method on a `/p/` type that writes to its receiver is a
-mutator**. If you return a pointer to an instance, that mutator is now callable by
-anyone with the authority of your realm.
+The rule: a reference that leaves your realm is a view. To let another realm
+write the tree, expose a crossing function
+(`func Set(cur realm, k string, v any) { store.Set(k, v) }`). Fresh-object
+corner: a `/p/` object your function builds and returns carries your realm's
+stamp, so the caller cannot write it either. Never write through a reference
+received as an argument: a caller can pass the realm's own object back, and your
+function would write whichever of your objects the caller picked.
 
 #### Sub-case: exported pointer fields
 
-The same path exists through exported pointer fields of `/p/` structs:
+The same exposure exists through exported pointer fields of `/p/` structs:
 
 ```go
 // p/mylib
@@ -124,18 +128,14 @@ type Container struct {
 // r/V
 var c = &Container{Items: avl.NewTree()}
 func GetContainer() *Container { return c }
-
-// Attacker: c.Items.Set(key, value) → borrow rule #2 on Items
-// (Items was allocated in /r/V) → write commits.
 ```
 
-Readonly taint on `c` does NOT block this: method dispatch is not a write operation,
-so the taint check does not fire. Borrow rule #2 fires first on method entry and
-authorizes the writes inside the method body.
+An exported pointer field exposes the pointed-to type's method set. A foreign
+caller's write to your stored object is refused, but the field still widens what
+you publish; keep it unexported and expose the reads you mean to.
 
-**Rule**: treat every exported pointer field of a `/p/` type as if it were a direct
-pointer to mutable state. If the pointed-to type has any mutation method, it is a
-live mutator handle. Never return the containing struct as a pointer.
+**Rule**: treat every exported pointer field of a `/p/` type as part of the API
+you publish.
 
 ### 9. `unsafe.PreviousRealm()` — old API, skips frame verification
 

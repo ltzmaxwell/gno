@@ -74,7 +74,8 @@ next cross-call.
 | `fn(cross(cur), ...)` into different realm | shifts | shifts | yes | yes |
 | `fn(cur, ...)` (non-crossing-call of crossing-function), same realm | unchanged | unchanged | no | no |
 | Non-crossing call of `/r/X`-declared callable from `/r/Y` | unchanged | shifts to `/r/X` (borrow rule #1) | yes | yes |
-| Stdlib/`/p/` method on real foreign-stamped receiver | unchanged | shifts to receiver's stamp (borrow rule #2) | yes | yes |
+| `/p/` method on a `/p/`-owned receiver | unchanged | shifts to receiver's stamp (borrow rule #2) | yes | yes |
+| `/p/` method on a realm-owned receiver (a view) | unchanged | unchanged; writes refused | no | no |
 | Stdlib/`/p/` method on primitive/nil/unstamped receiver | unchanged | unchanged | no | no |
 | Stdlib/`/p/` top-level function | unchanged | unchanged | no | no |
 
@@ -194,7 +195,7 @@ receiver's stamp on `/p/`-method dispatch), it closes the
 ## 4. Borrow Rules
 
 On every function or method call, `PushFrameCall` applies at most
-one implicit borrow rule. The three rules are listed below;
+one implicit borrow rule. The two rules are listed below;
 implementation lives in `gnovm/pkg/gnolang/machine.go`.
 
 ### 4.1 Borrow rule #1 — Declaring-realm borrow (`/r/`-declared callables)
@@ -223,33 +224,42 @@ attacker's body fail the readonly check.
 ### 4.2 Borrow rule #2 — Storage-realm borrow (stdlib / `/p/` methods)
 
 ```go
-if recv.IsDefined() {
-    obj := recv.GetFirstObject(m.Store)
-    if obj != nil {
-        recvOID := obj.GetObjectInfo().ID
-        if !recvOID.IsZero() &&
-            (m.Realm == nil || recvOID.PkgID != m.Realm.ID) {
-            recvPkgOID := ObjectIDFromPkgID(recvOID.PkgID)
-            objpv := m.Store.GetObject(recvPkgOID).(*PackageValue)
-            m.setRealm(objpv.GetRealm())
-        }
+// a method value not called by its binder's own code runs view-only
+if bindPID.IsRealmPkg() && !pOwned && !m.calledBy(bindPID) {
+    m.setViewOnly()
+}
+// a /p/ closure built under another realm runs view-only
+if fv.IsClosure && m.Realm != nil && fv.GetObjectInfo().ID.PkgID != m.Realm.ID {
+    m.setViewOnly()
+}
+if pOwned {
+    // the receiver is owned by a /p/ package: borrow to its realm
+    recvOID := oi.ID
+    if m.Realm == nil || recvOID.PkgID != m.Realm.ID {
+        objpv := m.Store.GetObject(ObjectIDFromPkgID(recvOID.PkgID)).(*PackageValue)
+        m.setRealm(objpv.GetRealm())
     }
 }
 ```
 
-A non-`/r/`-declared method (stdlib or `/p/`) called on a defined
-receiver whose `PkgID` differs from `m.Realm.ID` shifts `m.Realm` to
-the receiver's allocating realm for the call duration. This lets
-generic library helpers operate on caller-owned state:
+A `/p/`-declared method called on a defined receiver shifts `m.Realm` to
+the receiver's allocating realm only when the receiver is owned by a `/p/`
+package (`oi.ID.PkgID.IsImmutablePkg()`). A receiver owned by another realm
+is a view: `m.Realm` stays the caller's and the method's writes are refused.
+This lets library code operate on state the package itself owns:
 
-- `bptree.Set(...)` mutates the bptree even though `bptree` lives
-  in `/p/`.
-- A `*grc20.fnTeller` method mutates `grc20`-typed ledger data
-  whose underlying `*StructValue` is stamped with the realm that
-  called `NewToken`.
+- `bptree.Set(...)` called by the owning realm runs with that realm's
+  authority, so it mutates the realm's bptree.
+- A `/p/`-owned receiver borrows to its package, whose post-init
+  immutability gate then reports the write.
 
 **Borrow rule #2 does NOT fire when:**
 
+- The receiver is owned by another realm (or any non-`/p/` package): the
+  reference is a view, `m.Realm` stays the caller's, and the method's
+  writes are refused.
+- The receiver is stdlib-stamped: stdlib methods run with the caller's
+  authority.
 - The receiver has no object identity (`GetFirstObject` returns nil):
   primitive-underlying defined types (`type Mutator int`),
   nil-pointer receivers, nil-valued slice/map/func defined types.
@@ -257,86 +267,49 @@ generic library helpers operate on caller-owned state:
   value. (See §4.4 below for the attack-class implications.)
 - The call is a top-level `/p/` function (no receiver).
 
-### 4.3 Borrow rule #3 — Closure-capability borrow (`/p/`-declared closures)
+### 4.3 Library closures — no borrow, view-only when foreign
 
-```go
-if fv.IsClosure {
-    pid := fv.GetObjectInfo().ID.PkgID
-    if !pid.IsZero() && (m.Realm == nil || pid != m.Realm.ID) {
-        if pobj := m.Store.GetObject(ObjectIDFromPkgID(pid)); pobj != nil {
-            if objpv, ok := pobj.(*PackageValue); ok {
-                m.setRealm(objpv.GetRealm())
-            }
-        }
-    }
-}
-```
-
-When a `FuncLit` evaluates, the resulting closure remembers the
-realm that created it. Later, no matter who invokes the closure or
-where it was stored, borrow rule #3 sets `m.Realm` to that creator realm
-for the call. (See the borrow rule #3 code block in
-`gnovm/adr/interrealm_v2.md` for how the creator is recorded.)
-
-This is what **"closure = capability"** means in practice: a closure
-carries its creator's authority, and nothing — not storage, not who
-calls it — can give it more.
+There is no borrow rule for library closures. A closure declared in an `/r/`
+package is handled by borrow rule #1 and runs as that realm wherever it is
+called. A `/p/` or stdlib closure borrows nothing: called while the realm
+it was built under is current, it runs as that realm; called under any
+other realm, it runs view-only, so every write to a stored object is
+refused. A zero stamp counts as another realm.
 
 - A `/p/`-declared factory invoked while `m.Realm = /r/A` (e.g.
-  `/p/X.MakeCounter()` called from `/r/A.init`) returns a closure
-  owned by `/r/A`. Subsequent invocations from `/r/B` still run
-  under `/r/A`'s authority, so writes to captured `/r/A` state
-  commit normally.
+  `/p/X.MakeCounter()` called from `/r/A.init`) returns a closure built
+  under `/r/A`. Called from `/r/B` it runs view-only, so writes to
+  captured `/r/A` state are refused; called from `/r/A` it still writes.
 - Attacker `/r/M` cannot build a closure that writes `/r/V`'s data,
-  even if `/r/V` accepts the closure and runs it. The closure's
-  creator is `/r/M`, so its body runs under `/r/M`'s authority and
-  any write into `/r/V` hits the readonly check. `/r/V`'s API can
-  safely accept arbitrary `func()`-valued callbacks without being a
-  confused deputy.
-
-If the closure's source file lives in `/r/X`, borrow rule #1 has already
-borrowed to `/r/X` and borrow rule #3 is a no-op. borrow rule #3 only matters when
-the closure was written in `/p/` (or in code with no realm of its
-own).
+  even if `/r/V` accepts the closure and runs it: the closure is not
+  declared in `/r/V` and `/r/V` did not call it by name, so it runs
+  view-only. `/r/V`'s API can safely accept arbitrary `func()`-valued
+  callbacks without being a confused deputy.
 
 ### 4.4 The No-Anchor Case
 
 When borrow rule #2 doesn't fire on a `/p/`-method call, the body inherits
-the caller's `m.Realm`. If the caller was *already* borrowed to a
-victim realm (e.g. inside a different borrow rule #2ed `/p/`-method
-body that dispatches a `/p/`-callback), the no-anchor body runs
-under the victim's authority. This is the open laundering vector
-documented as the **Apply class**: a `/p/`-method that invokes a
-concretely-`/p/`-typed callback lets a top-level `/p/`-attacker
-function inherit victim authority and write through the callback's
-parameter.
-
-See `gno-security-guide.md` §3(B) for full discussion. The
-filetests `gnovm/tests/files/zrealm_launder_rdata_embed_p.gno`,
-`_ptrfield_p.gno`, `_valfield_p.gno` demonstrate the attack succeeds
-when victim's `/r/`-data embeds or fields a `/p/`-type with such a
-higher-order method.
+the caller's `m.Realm`. This is the no-anchor case: the call has no
+borrowed realm of its own. The historic laundering vector through it — a
+`/p/` higher-order method such as `Apply` invoking a top-level `/p/`
+`FuncDecl` handed in by an attacker — is now refused: rule #2 no longer
+borrows `Apply` to `/r/V`, so the callback inherits the attacker's realm
+and the readonly gate refuses V's node. The filetests
+`gnovm/tests/files/zrealm_launder_rdata_embed_p.gno` and
+`zrealm_launder_rdata_ptrfield_p.gno` pin the refusal. See
+`gno-security-guide.md` §3(B).
 
 ### 4.5 When `m.Realm` is nil
 
-`m.Realm` is nil in two cases:
+`m.Realm` is nil only in a view-only frame or when no realm is active
+(single-user runs). `setViewOnly` sets `m.Realm` to nil and sets the view
+flag, so the readonly check refuses every stored object.
 
-- During `/p/`-receiver method dispatch: borrow rule #2 borrows `m.Realm` to
-  `pv.GetRealm()` of the receiver's stamping package, which is nil
-  for `/p/` and stdlib. `m.Realm` stays nil for the duration of the
-  method body and is restored on frame pop via `fr.LastRealm`.
-- During stdlib top-level function calls (same mechanism — no
-  declaring realm to shift to).
-
-Both cases are intentional. The `/p/`-immutability gate in
-`Realm.DidUpdate` (§3.3) fires when `rlm == nil && m.Stage ==
-StageRun` and the object being written is real and `/p/`-stamped —
-catching writes that would otherwise slip through unattributed.
-
-`m.Realm` is non-nil during all other execution: `/r/`-method
-dispatch (borrow rule #2 borrows to the receiver's `/r/`), declaring-realm
-borrow on borrow rule #1, closure capture-realm on borrow rule #3, and the
-top-level frame of a transaction (one of `/r/` or `/e/`).
+A `/p/` or stdlib package is not a nil realm: it carries a frozen realm
+derived from its path (`fillPackage`), so borrow rule #2 lands `m.Realm`
+on it, and `Realm.DidUpdate` refuses a post-init write with `cannot mutate
+<path>: package is immutable post-init`. A stdlib top-level function keeps
+the caller's realm.
 
 ## 5. Crossing Functions and Crossing-Methods
 
@@ -565,18 +538,23 @@ if xv.T != nil && !xv.T.IsImmutable() && m.IsReadonly(&xv) {
         xvdt.PkgPath == m.Realm.Path {
         // allow: converting m.Realm's own declared type
     } else {
-        panic("illegal conversion of readonly or externally stored value")
+        sliceType, ok := baseOf(xv.T).(*SliceType)
+        isBytesArray := ok && (sliceType.Elem().Kind() == Uint8Kind || sliceType.Elem().Kind() == Int32Kind)
+        if isBytesArray && t.Kind() == StringKind {
+            // allow: []byte / []rune to string does not modify the slice
+        } else {
+            panic("illegal conversion of readonly or externally stored value")
+        }
     }
 }
 ```
 
-Without this, an attacker could declare a parallel `/p/`-type with
-the same struct layout as a victim-owned `/p/`-value plus a mutator
-method, convert the victim's pointer to the parallel type, and
-invoke the new mutator — borrow rule #2 would route `m.Realm` to victim's
-realm for the duration of the `/p/`-method, so the write would
-succeed under victim authority. Case 1 blocks the conversion at the
-source.
+`IsImmutable` skips types whose base is immutable (primitives, funcs);
+the readonly check does the rest. Without this check, an attacker could
+declare a parallel `/p/`-type with the same struct layout as a
+victim-owned `/p/`-value plus a mutator method, convert the victim's
+pointer to the parallel type, and invoke the new mutator. Case 1 blocks
+the conversion at the source.
 
 The carve-out for `xv.T.PkgPath == m.Realm.Path` allows legitimate
 conversion of m.Realm's own declared types.
@@ -647,11 +625,11 @@ binding time**.
 
 Two practical implications:
 
-1. **Storing a bound method value isn't a safety boundary.** A
-   `/p/`-method bound to a victim-stamped receiver, stored anywhere,
-   still borrow rule #2 borrows to victim when invoked. Verified in
-   `zrealm_launder_rdata_mv_stored_bound_mv.gno` and
-   `_attacker_stored_mv.gno`.
+1. **A bound `/p/` method writes no stored object for a foreign caller.**
+   It keeps its binder's authority only while the binder's own code calls
+   it and otherwise runs view-only. Verified in
+   `zrealm_view_callback.gno`, `zrealm_view_method_value_arg.gno` and
+   `zrealm_launder_rdata_mv_stored_bound_mv.gno`.
 
 2. **Method expressions are different.** `me := (*T).M` is an
    *unbound* method value with the receiver as an explicit first
@@ -660,9 +638,9 @@ Two practical implications:
    receiver the same way. Verified in
    `zrealm_launder_rdata_mv_method_expr.gno`.
 
-Realm authors should treat bound method values of `/p/`-types over
-their internal state as **publishing the underlying method to any
-holder** — equivalent to returning a setter closure.
+A bound method value of a `/p/`-type over a realm's internal state
+publishes nothing by itself; there is no exception. The realm exposes a
+crossing function when it wants another realm to write.
 
 ## 11. Guidelines
 

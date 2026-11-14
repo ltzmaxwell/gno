@@ -57,8 +57,7 @@ cross-calls (`fn(cross, ...)`).
 
 **Realm-storage-context** determines where new and modified objects are
 persisted during realm-transaction finalization. It changes on explicit
-cross-calls *and* on implicit borrow-crosses. There are three kinds of
-implicit borrow:
+cross-calls *and* on implicit borrow-crosses. The borrows are:
 
   1. **Declaring-realm borrow** (any /r/-declared callable): when a function,
      method, or closure declared in `/r/X` is invoked from a different
@@ -67,26 +66,17 @@ implicit borrow:
      unreal, or primitive receivers), and closures whose declaring site was in
      `/r/X`. It does NOT change realm-context.
 
-  2. **Storage-realm borrow** (stdlib + /p/ methods on real foreign
-     receivers): when a non-`/r/`-declared method (stdlib or `/p/`) is called
-     on a real receiver whose storage realm differs from the current
-     realm-storage-context, the storage-context soft-switches to the
-     receiver's storage realm. Lets generic library methods (`bptree.Set`,
-     `grc20.Transfer`, etc.) mutate state living in another realm.
+  2. **Storage-realm borrow** (`/p/` methods on a `/p/`-owned receiver): a
+     non-`/r/`-declared method called on a receiver owned by a `/p/` package
+     soft-switches the storage-context to the receiver's package realm, where
+     the post-init immutability gate reports the write. A receiver owned by a
+     realm is a view: the storage-context stays the caller's and its writes are
+     refused. Stdlib methods run with the caller's authority.
 
-  3. **Closure-capability borrow** (closures built by a `FuncLit` in `/p/`):
-     when such a closure is invoked, the storage-context soft-switches to the
-     realm that created it. A closure carries its creator's authority —
-     storing it elsewhere does not change that.
-
-     Example: if `/r/A.init` calls `/p/X.MakeCounter()`, the returned closure
-     is owned by `/r/A` and can write `/r/A`'s captured state from any caller.
-     Counter-example: an `/r/M` closure over a slice it borrowed from `/r/V`
-     still cannot write `/r/V`, even if `/r/V` stores and runs it.
-
-     This rule fires only when Rules 1 and 2 don't (FuncLit in `/p/`, no
-     receiver shift). Implementation: the FuncValue's `PkgID` is stamped at
-     `doOpFuncLit`.
+  3. **Library closures** (closures built by a `FuncLit` in `/p/` or a stdlib
+     package): no borrow. Called while the realm it was built under is current,
+     it runs as that realm; otherwise it runs view-only, writing no stored
+     object. An `/r/`-declared closure is covered by rule #1.
 
 After an explicit cross-call, both contexts refer to the same realm. They
 diverge under either implicit borrow — realm-context stays the same, storage
@@ -99,14 +89,36 @@ moves.
 | `fn(cur, ...)` (non-crossing-call of crossing-function), same realm | No | No | No | No |
 | Non-crossing method in own (caller's) realm | No | No | No | No |
 | Non-crossing /r/-declared callable in foreign realm (method, top-level, closure) | No | Yes (declaring) | Yes | Yes |
-| Stdlib or /p/ method, real receiver in different realm | No | Yes (storage) | Yes | Yes |
+| Stdlib or /p/ method, receiver owned by a /p/ package | No | Yes (receiver's package) | Yes | Yes |
+| Stdlib or /p/ method, realm-owned receiver (a view) | No | No; writes refused | No | No |
 | Stdlib or /p/ method, unreal/primitive receiver | No | No | No | No |
 | Stdlib or /p/ top-level function | No | No | No | No |
-| /p/-declared closure (FuncLit), invoked in a different realm than its minter | No | Yes (minter) | Yes | Yes |
+| /p/-declared closure, invoked in a different realm than its minter | No | No; runs view-only | No | No |
 
 \* `unsafe.CurrentRealm()` returns the same realm, but `unsafe.PreviousRealm()`
 shifts — what was current becomes previous. See [Realm Boundaries](#realm-boundaries)
 for definitions of boundary and finalization.
+
+### The rule
+
+A realm's state is written only by code acting for that realm. Code acts for a
+realm only if it is written in that realm's source or that source calls it by
+name; code that arrived as a value from someone else never does.
+
+The VM enforces this in `pushFrameCall`. Borrow rule #1 is unchanged: a
+function, method or closure declared in an `/r/` realm runs under that realm.
+Borrow rule #2 borrows a `/p/` method to the receiver's owner only when the
+receiver is owned by a `/p/` package, whose immutability gate then reports the
+write. There is no rule #3: a closure not declared in an `/r/` realm, called
+while a realm other than the one it was built under is current, runs view-only.
+A method value not called by its binder also runs view-only. A refused write
+from `/p/` code fails with `cannot modify object owned by another realm from
+library code
+(call a function of the owning realm)`.
+
+The removed `mutable` builtin is not part of this model. A realm that wants
+another realm to write exposes crossing functions, and each crossing function
+writes the realm's own variable.
 
 ### Design Goals
 
@@ -446,18 +458,15 @@ A function declared in p packages (or in stdlib) when called:
  * inherits the last realm for top-level functions.
  * inherits the last realm when a method is called on an unreal or primitive
    receiver.
- * implicitly storage-borrows to the receiver's resident realm when a method
-   is called on a real receiver residing in a different realm. The receiver's
-   resident realm is the "borrow realm" for this call.
- * **closures** (built by a `FuncLit`, not declared at top level) implicitly
-   capability-borrow to the realm that created them. Writes inside the
-   closure body run under the creator's authority. This is how persisted
-   `/p/`-declared closures (e.g. the result of `/p/X.MakeCounter()` called
-   from `/r/A.init`) can be safely invoked from `/r/B` — borrow rule #3 borrows
-   `m.Realm` to `/r/A` for the body, so the captured-counter write is
-   in-realm. Conversely, a closure created under `/r/M`'s authority cannot
-   mutate `/r/V`, even if `/r/V` accepts and runs it. The creator's
-   authority is the ceiling.
+ * borrows to the receiver's package only when the receiver is owned by a
+   `/p/` package; a receiver owned by a realm is a view, and the method's
+   writes to the owner's object are refused.
+ * **closures** (built by a `FuncLit`, not declared in an `/r/` realm) borrow
+   nothing: called while the realm they were built under is current they run
+   as that realm, and called under any other realm they run view-only.
+   A `/p/`-declared closure invoked from `/r/B` after `/r/A` built it writes
+   `/r/A`'s state only while `/r/A` is current; otherwise the write is
+   refused, so a closure gains no authority by changing hands.
 
 A function declared in a realm package (`/r/X`) when called:
 
@@ -785,16 +794,15 @@ it protects realms against mutating its own object that it doesn't intend to:
 such as when a realm's real object is passed as an argument to a mutator
 function where the object happens to match the type of the argument.
 
-Objects returned from functions or methods are not readonly tainted. So if
-`func (eo object) GetA() any { return eo.FieldA }` then `externalobject.GetA()`
-returns an object that is not tainted assuming eo.FieldA was not otherwise
-tainted. While the parent object `eo` is still protected from direct
-modification by external realm logic, the returned object from `GetA()` can be
-passed as an argument to logic declared in the residing realm of `eo.FieldA`
-for direct mutation.
+Objects returned from functions or methods carry no extra taint, but a
+`/p/` method called on a foreign-owned object runs with the caller's authority,
+so a write to the owner's object is refused; see "Views" below.
 
 Whether or not an object is readonly tainted it can always be mutated by a
-method declared on the receiver.
+method declared in the realm that owns it (borrow rule #1 runs that method
+under the declaring realm). A `/p/`-declared method runs with the caller's
+authority, so a foreign caller cannot write the owner's object through it; the
+owner exposes a crossing function instead.
 
 ```go
 // /r/alice
@@ -831,6 +839,46 @@ Future versions of Gno may also expose a new modifier keyword `readonly` to
 allow for return values of functions to be tainted as readonly. Then with `func
 GetBlacklist() readonly []string` the return value would be readonly tainted
 for both bob and alice.
+
+### Views
+
+A reference that crosses a realm boundary, as a return value or as an
+argument, is a **view**. Direct writes through it are refused by the readonly
+taint, and a `/p/` method called on it runs with the *caller's*
+storage-context, so its writes to the owner's object are refused as well.
+Borrow rule #2 fires only for a receiver owned by a `/p/` package, never for a
+realm's stored object; there is no exception that changes this.
+
+A realm that wants another realm to write exposes crossing functions that name
+its own variables:
+
+```go
+// realm X
+var users = avl.NewTree()
+
+func Users() *avl.Tree                { return users } // view: foreign writes refused
+func ReadUsers() *rotree.ReadOnlyTree { return rotree.Wrap(users, nil) }
+func SetUser(cur realm, k string, v any) { users.Set(k, v) } // X writes, as X
+
+// realm A
+X.Users().Set("k", v)              // refused: X's tree, A's authority
+X.SetUser(cross(cur), "k", v)      // commits to X's storage
+X.ReadUsers().Set("k", v)          // does not compile: ReadOnlyTree has no Set
+```
+
+An argument keeps the same rule: writing through a caller-supplied reference
+writes whichever of your own objects the caller named, so name your own
+variable instead. A closure declared in an `/r/` realm acts for that realm
+wherever it is called, so handing one out hands out that realm's authority; a
+`/p/` or stdlib closure called by another realm's code runs view-only.
+A method value of a `/p/` or stdlib method runs view-only when another realm's
+code calls it, writing no stored object, receiver or argument; only its
+binder's own code can write through it. A `/p/`-owned receiver borrows to its
+package, whose post-init immutability gate reports the write.
+
+Fresh-object corner: an object a realm function builds and returns carries
+that realm's stamp from allocation, so the caller cannot write it either,
+exactly like a stored object.
 
 ## `panic()` and `revive(fn)`
 

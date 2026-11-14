@@ -38,6 +38,11 @@ path is attacker-controlled.
 
 ## 2. Four Structural Defenses
 
+The single rule behind them: a realm's state is written only by code acting
+for that realm. Code acts for a realm only if it is written in that realm's
+source or that source calls it by name; code that arrived as a value from
+someone else never does.
+
 The VM provides four independent defenses. A realm becomes
 exploitable when an API design defeats all of them at once.
 
@@ -53,33 +58,29 @@ victim's authority by tricking the victim into calling it.
 
 ### 2.2 Storage-Site Rule (borrow rule #2 of PushFrameCall)
 
-A `/p/`-declared method (or stdlib) invoked on an object-bearing
-receiver whose `PkgID` differs from the current `m.Realm` borrows
-`m.Realm` to the receiver's storage realm for the call duration.
+A `/p/`-declared method invoked on an object-bearing receiver borrows
+`m.Realm` to the receiver's package only when that package owns the
+receiver (`PkgID.IsImmutablePkg()`). A receiver owned by a realm is a
+view: `m.Realm` stays the caller's and the method's writes to the
+owner's object are refused.
 
-Consequence: generic library helpers (`avl.Tree.Set`, `grc20`
-methods) can mutate state living in the caller's realm without
-needing per-realm copies — but only state belonging to the receiver's
-own realm.
+Consequence: library methods (`avl.Tree.Set`, `grc20` methods) write
+the caller's own objects under the caller's authority, with no borrow.
+A `/p/`-owned receiver borrows to its package, whose post-init gate
+refuses the write; a realm's stored object is not writable this way.
 
-### 2.3 Closure-Capability Rule (borrow rule #3 of PushFrameCall)
+### 2.3 Library Closures (no borrow rule)
 
-A closure (a `FuncLit`, as opposed to a top-level `FuncDecl`) carries
-the authority of the realm that created it. The creator is fixed at
-the moment the `FuncLit` is evaluated and never changes. Invoking the
-closure later borrows `m.Realm` to that creator for the call
-duration, regardless of where the closure is currently stored or who
-invokes it.
+A `/p/` or stdlib closure borrows nothing. Called while the realm it
+was built under is current, it runs with that realm's authority;
+called under any other realm it runs view-only. It gains no authority
+by changing hands, whether by storage, passing, or a higher-order
+method.
 
-Consequence: a closure cannot gain authority by changing hands. If an
-attacker hands `/r/V` a `func()` that writes `/r/V`'s data, `/r/V`
-can call it safely — the body still runs under the attacker's
-authority, so the write fails readonly.
-
-The legitimate "callback that mutates `/r/V`'s own state" pattern
-requires `/r/V` itself to create the closure (e.g. by returning a
-`func()` from a `/r/V`-declared crossing function), so that the
-closure carries `/r/V`'s authority.
+Consequence: a library closure that arrives with another realm's values
+can write no stored object. A `/r/`-declared closure is different:
+borrow rule #1 runs it as its declaring realm wherever it is called,
+so the `FuncLit` to hand out is one your realm's source declares.
 
 ### 2.4 Readonly Taint
 
@@ -127,15 +128,17 @@ type Wrapper struct {
 
 then attackers reach `Inner` (it's exported), and `somelib.Node` may
 have `Iterate(cb func(*Node) bool)` or `Apply(fn func(*Node))`.
-Inside `Apply`'s body, `m.Realm` is borrowed to `/r/V` by borrow rule #2 (the
-`*Node`'s `PkgID` is `/r/V`, since `/r/V` allocated it). The `Apply`
-body invokes `fn`. If `fn` is a top-level `/p/A.Evil` function with
-signature `func(*somelib.Node)`, **neither borrow rule fires** —
-top-level `/p/`-functions have no `/r/` declaring realm and no
-receiver. `m.Realm` stays at `/r/V` for the entire callback. Writes
-through the parameter commit under victim authority.
+`Apply`'s body runs under the caller's authority: the `*Node` is owned
+by `/r/V`, not by a `/p/` package, so borrow rule #2 does not fire and
+V's node is a view. When the attacker calls `Apply` with a top-level
+`/p/A.Evil` of signature `func(*somelib.Node)`, `Evil` inherits the
+attacker's realm, and its write to V's node is refused with `cannot
+modify object owned by another realm from library code (call a function
+of the owning realm)`. This family is closed by the view rule; the filetests
+`zrealm_launder_rdata_embed_p.gno` and `zrealm_launder_rdata_ptrfield_p.gno`
+pin the refusal.
 
-Real-world `/p/`-types with this shape include
+Types that historically had this shape include
 `nt/avl/v0/node.Iterate(cb func(*Node) bool)`,
 `moul/cow/node.Iterate(cb func(*Node) bool)`,
 `onbloc/json/builder.WriteObject(fn func(*NodeBuilder))`.
@@ -150,21 +153,19 @@ func ApplyHook(fn func(any)) {
 }
 ```
 
-and an attacker passes a `/p/A`-declared `fn` (a top-level
-`FuncDecl`, *not* a closure), the same gap applies: `/r/V`'s body
-holds `m.Realm = /r/V`, then dispatches to attacker code that doesn't
-trigger any borrow.
+and an attacker passes a closure, the outcome depends on where it is
+declared: an `/r/A`-declared closure runs as `/r/A` by borrow rule #1,
+while a `/p/` closure built under `/r/A` runs view-only when `/r/V`
+calls it (§2.3). Either way the closure's writes into `/r/V` are
+refused.
 
-Closures handed in by an attacker are safe — borrow rule #3 (§2.3) borrows
-`m.Realm` back to the attacker for the body, so writes into `/r/V`
-fail readonly. The gap in (C) is narrower than it looks: it only
-applies to top-level `/p/` `FuncDecl` values, not to arbitrary
-`func()` parameters.
-
-Defense in depth: give the callback a parameter type declared in
-`/r/V` itself, e.g. `fn func(*v.User)`. `/p/` code can't name
-`v.User`, and any `/r/A` implementation of a matching function runs
-under `/r/A`'s authority by borrow rule #1.
+The remaining gap: a top-level `/p/` function value (a `FuncDecl`, not
+a closure) that `/r/V` calls inherits `/r/V`'s authority, because a
+top-level `/p/` function always runs as its caller (known open; see
+`gnovm/adr/prxxxx_explicit_entry.md`). Give the callback a parameter
+type declared in `/r/V` itself, e.g. `fn func(*v.User)`. `/p/` code
+can't name `v.User`, and any `/r/A` implementation of a matching
+function runs under `/r/A`'s authority by borrow rule #1.
 
 Empirically verified across 60+ probe filetests:
 `gnovm/tests/files/zrealm_launder_rdata_*.gno`.
@@ -212,44 +213,48 @@ func Users() []*User { return users }   // attacker gets aliased slice
 
 Any pointer (slice header, map, struct pointer) returned by a getter
 is mutation-attempt surface. The readonly taint protects you from
-direct field writes (`Users()[0].Name = "x"` panics), but if `*User`
-has any method with a body that writes its receiver, calling that
-method on the returned pointer succeeds — borrow rule #2 borrows `m.Realm`
-back to `/r/V`, and the write commits.
+direct field writes (`Users()[0].Name = "x"` panics). A `/p/` method
+called on a reference that left your realm runs with the *caller's*
+authority, not yours: borrow rule #2 fires only for a receiver owned by
+a `/p/` package, so its write to your stored object is refused with
+`cannot modify object owned by another realm from library code
+(call a function of the owning realm)`.
 
-**Rule**: getters return either values (copies), unexported method
-results, or read-only views. Never a pointer to internal mutable state.
+```go
+var users = avl.NewTree()
+
+func Users() *avl.Tree                   { return users }        // view: Set() is refused
+func SetUser(cur realm, k string, v any) { users.Set(k, v) }     // the owner's crossing function
+func ReadUsers() *rotree.ReadOnlyTree    { return rotree.Wrap(users, nil) }
+```
+
+**Rule**: a reference that leaves your realm is a view. To let another
+realm write, expose a crossing function that names your own variable
+(`SetUser` above); the caller calls that, and only your code performs
+the write. A closure declared in your realm runs as your realm wherever
+it is called, so handing one out publishes whatever it reaches. A
+method value of a `/p/` method (`view.Set`) runs view-only when another
+realm's code calls it (§7.1). Fresh-object corner: a `/p/` object your
+function builds and returns carries your realm's stamp from allocation,
+so the caller cannot write it either.
 
 #### 5.1a `/p/`-type with unexported fields but exported mutation methods
 
-The taint-bypasses-method-dispatch gap applies even when the `/p/`-type
-has *no exported fields at all*. If every field is unexported but the
-type has exported methods that mutate the receiver, returning a pointer
-to an instance stored in your realm is equivalent to publishing those
-mutators as your own API.
-
 `avl.Tree` is the canonical example. All fields (`root`, `size`) are
-unexported — a naive reviewer sees no exposed state. But `Tree.Set`,
-`Tree.Remove`, and `Tree.ReverseIterate` all mutate or traverse the
-tree. An attacker who receives a `*avl.Tree` pointer can call
-`tree.Set(key, value)`, borrow rule #2 fires (the tree was allocated
-in `/r/V`), and the write commits under victim authority.
-
-```go
-var store = avl.NewTree()
-
-// WRONG — all fields unexported, but exported methods are mutators
-func GetStore() *avl.Tree { return store }
-
-// Attacker: GetStore().Set("k", "injected")  →  commits under /r/V
-```
+unexported — a naive reviewer sees no exposed state — but `Tree.Set`,
+`Tree.Remove` and `Tree.ReverseIterate` mutate or traverse the tree. A
+getter returning `*avl.Tree` still publishes those operations to every
+caller. The VM refuses a foreign caller's write to your stored tree, but
+the getter is a read exposure and a later change to the type's method
+set widens it. Keep the pointer unexported and expose only the reads you
+mean to publish.
 
 #### 5.1b Exported pointer fields on `/p/` structs
 
-The same path exists one level of indirection deeper. If a `/p/` struct
-has an exported field that is itself a pointer type whose type has
-mutation methods, returning a pointer to the containing struct gives
-indirect access to that inner mutator.
+The same exposure exists one level of indirection deeper. If a `/p/`
+struct has an exported field that is itself a pointer type whose type
+has mutation methods, returning a pointer to the containing struct gives
+every caller indirect access to those methods.
 
 ```go
 // p/mylib
@@ -261,15 +266,34 @@ type Container struct {
 // r/V
 var c = &Container{Items: avl.NewTree()}
 func GetContainer() *Container { return c }
-
-// Attacker: GetContainer().Items.Set(key, value)
-// Readonly taint on c does NOT block method dispatch.
-// Borrow rule #2 fires on Items (allocated in /r/V) → write commits.
 ```
 
-**Rule**: treat every exported pointer field of a `/p/` type as a live
-mutator handle if the pointed-to type has any mutation method. Never
-return the containing struct as a pointer.
+**Rule**: treat every exported pointer field of a `/p/` type as part of
+the API you publish. The VM refuses a foreign write to your stored
+object, but the field still exposes the type's method set to every
+caller.
+
+#### 5.1c A type's methods that write their arguments
+
+A `/p/` method runs with the authority of whoever calls it, so a method
+that writes one of its *arguments* (`h.CopyInto(dst)`) writes whatever
+object that caller has authority over. When your own code calls a
+library method with two of your objects, the method can write the one
+you did not mean to expose. Name the object explicitly and read the
+method set of any type you pass your own state into.
+
+#### 5.1d Acting on a reference a caller passed in
+
+A caller can pass your realm's own object back to you. Inside your
+function the running realm is yours, so anything you do to that argument
+you do to your own state:
+
+```go
+func Touch(cur realm, t *avl.Tree) { t.Set("k", "v") } // writes whichever of your trees the caller picked
+```
+
+**Rule**: never write through a reference received as an argument; name
+the realm's own variable instead (`users.Set(k, "v")`).
 
 ### 5.2 Embedding a `/p/`-type with concrete-callback higher-order methods
 
@@ -448,23 +472,36 @@ victim data into their own context. Even the local copy is sticky.
 
 ## 7. Properties That Surprised Us (Worth Knowing)
 
-### 7.1 Bound method values carry the receiver's PkgID
+### 7.1 Bound method values write only for the binder and the caller together
 
 `mv := victim.Apply` (bound method value) is a function value that
-remembers the receiver. When `mv()` is invoked later — even stored
-in attacker state, boxed into an interface, retrieved through
-indirection — `PushFrameCall` sees the receiver and borrow rule #2 fires
-based on the receiver's `PkgID`.
+remembers the receiver and the realm whose frame bound it. When `mv()`
+is invoked later — stored in attacker state, boxed into an interface,
+or passed as a callback into another realm's call — a `/p/` or stdlib
+method keeps the binder's authority only while every frame down to the
+nearest realm-declared one runs as the binder. Otherwise it runs
+view-only: it can write no realm's stored objects, neither the
+receiver nor an argument. So a method value an attacker binds on your
+view is refused wherever it runs, and one your realm binds and hands
+out is refused when another realm's code calls it, directly, wrapped in
+that realm's closure, or as a callback inside one of your objects. One
+case stays open: a value bound by a `maketx run` script and *stored* by
+your realm is re-stamped to your realm, so calling it later runs as you.
+Do not store and call function values that callers supply.
 
 Method *expressions* (unbound: `(*T).Apply`) do not carry the
 receiver stamp. Calling `me(recv, args)` and `recv.Apply(args)`
 go through different paths.
 
-**Implication**: if you ever return a bound method value of a
-`/p/`-type pointing into your state, an attacker can store and
-invoke it later — borrow rule #2 will still borrow to your realm. Don't
-return bound method values of `/p/`-types unless you know the
-method body is safe under attacker invocation.
+**Implication**: returning `view.Set` for a `/p/`-type in your state
+hands out no write; it works only when your own code calls it. To hand
+out a writer, expose a crossing function
+(`func Set(cur realm, k string, v any) { view.Set(k, v) }`); the caller
+calls that, and only your code writes. To write your own object from
+inside another realm's code, pass a closure
+(`func(k string, v any) bool { return mine.Set(k, v) }`), not
+`mine.Set`. A closure declared in your realm, or a method value of a
+method your realm declares, still runs as your realm.
 
 ### 7.2 Conversion-time panic is not Gno-recoverable
 
@@ -528,6 +565,9 @@ Before deploying a realm:
 - [ ] No exported field is a `/p/`-pointer or embedded `/p/`-type
   whose type has `Iterate(cb func(*T))` / `Apply(fn func(*T))` /
   similar concretely-typed callback methods.
+
+- [ ] No function writes through a reference it received as an
+  argument; every write names my own variable (see §5.1d).
 
 - [ ] No function treats a non-nil pointer to one of my types as
   proof of authorization (see §7.3).
@@ -597,9 +637,9 @@ func SetOwner(cur realm, newOwner address) {
 
 // NO method like:
 //   func GetCounter() *Counter { return gCounter }
-// because that exposes an aliased pointer (the read methods on
-// *Counter would borrow rule #2 back, and any mutator method
-// on *Counter would let attackers write under our authority).
+// because that exposes an aliased pointer: Counter is declared in
+// this realm, so its methods run under our authority for any
+// caller (borrow rule #1).
 ```
 
 This realm passes the checklist. Attackers can:
